@@ -18,7 +18,7 @@ except Exception:
 ## TODO: | cash and items implementation | 
 # TODO: gold and silver prices non API?
 ## TODO: long term storage, 
-
+# TODO: GUI?
 
 
  
