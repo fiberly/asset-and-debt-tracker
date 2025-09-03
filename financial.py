@@ -15,7 +15,7 @@ except Exception:
 
 
 
-## TODO: | cash and items implementation | 
+## TODO: | remove items | 
 # TODO: gold and silver prices non API?
 ## TODO: long term storage, 
 # TODO: GUI?
@@ -344,6 +344,16 @@ def showCash(section="totals", quiet=False) -> float:
                 print(f"{dictName}: ${quantityDollars}")
         return subtotal
 
+def add_cash_to_positions():
+    try: 
+        quantityCash = float(input("Enter number of dollars and or cents to add: "))
+    except ValueError:
+        print("Invalid Number Entered")
+        return
+    cash["cash"] = cash.get("cash", 0.0) + max(0.0, quantityCash)
+    print(f"\nUpdated available cash, with {cash["cash"]:.2f} dollars")
+
+
 # ITEMS SHOW
 def showItems(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
@@ -353,16 +363,29 @@ def showItems(section="totals", quiet=False) -> float:
         
         subtotal = 0.0
         
-        for dictName, quantityDollars in cash.items():
-            if quantityDollars is None: 
+        for itemName, amount in items.items():
+            if amount is None: 
                 if not quiet: 
-                    print(f"{dictName}: no dollar amount recorded")
+                    print(f"{itemName}: no dollar amount recorded")
                 continue
             
-            subtotal += quantityDollars
+            subtotal += amount
             if not quiet: 
-                print(f"{dictName}: ${quantityDollars}")
+                print(f"{itemName}: ${amount}")
         return subtotal
+
+def add_item_to_positions():
+    itemAdd = input("Enter item name, e.g. mobile phone: ").strip()
+    if not itemAdd:
+        print("Canceled")
+        return
+    try: 
+        priceOfItem = float(input("Enter price/worth of item to: "))
+    except ValueError:
+        print("Invalid Number Entered")
+        return
+    items[itemAdd] = items.get(itemAdd, 0.0) + max(0.0, priceOfItem)
+    print(f"\nUpdated [{itemAdd}], with ${items[itemAdd]}")
 
 
 
@@ -428,16 +451,29 @@ def _main_menu_():
                     print("  1) Stock")
                     print("  2) Crypto (CoinGecko ID)")
                     print("  3) Bullion (gold|Silver)")
-                    print("  4) Exit")
-                    selectionUpdate = input("Please Choose 1/2/3 or 4: ").strip()
+                    print("  4) Cash")
+                    print("  5) Item")
+                    print("  6) Exit")
+                    selectionUpdate = input("Please Choose 1/2/3/4/5 or 6: ").strip()
                     if selectionUpdate == "1":
                         add_stock_to_positions()
                     if selectionUpdate == "2":
                         add_crypto_to_positions()
                     if selectionUpdate == "3":
                         add_bullion_to_positions()
+                    if selectionUpdate == "4":
+                        add_cash_to_positions()
+                    if selectionUpdate == "5":
+                        add_item_to_positions()
+                    if selectionUpdate == "6":
+                        print("Exiting...")
+                        continue
+                    if selectionUpdate not in [1, 2, 3, 4, 5, 6]:
+                        print("Please enter a number being 1, 2, 3, 4, 5 or 6")
                     else: 
-                        print("")
+                        print("Error")
+                if entry not in section:
+                    print("Please enter one of the letter choice")
                 else: 
                     print("Invalid Selection, Please Enter a/b/c/d/e/f or g")
         elif choice == "2":
