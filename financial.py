@@ -177,12 +177,12 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=False) -> dict[str, 
                 if show_stocks: 
                     if section in ("stocks", "stock", "a", "totals"):
                         if not quiet:
-                            print(f"{ticker}: {quantity} shares at ${tickerPrice:.2f} each, Total Value: ${TotalValue:.2f}")
+                            print(f"\n{ticker}: {quantity} shares at ${tickerPrice:.2f} each, Total Value: ${TotalValue:.2f}")
                 if section not in ("stocks", "stock", "a", "totals"):
                     print("Invalid Input")
     except Exception as e:
         if not quiet: 
-            print(f"Error retrieving data for ticker:", e)
+            print(f"\nError retrieving data for ticker:", e)
         
     return subtotal
 
@@ -227,7 +227,7 @@ def showCrypto(section="totals", quiet=False) -> float:
             CryptoWorth = quantityCrypto * price
             subtotal += CryptoWorth
             if not quiet: 
-                print(f"{cryptoName}: {quantityCrypto} at the current price ${price:.2f}, Total Value: ${CryptoWorth:.2f}")
+                print(f"\n{cryptoName}: {quantityCrypto} at the current price ${price:.2f}, Total Value: ${CryptoWorth:.2f}")
         return subtotal
 
 def add_crypto_to_positions():
@@ -241,7 +241,7 @@ def add_crypto_to_positions():
         print("Invalid Number Entered")
         return
     crypto[coinGeckoID] = crypto.get(coinGeckoID, 0.0) + max(0.0, quantityCrypto)
-    print(f"Updated [{coinGeckoID}], with {crypto[coinGeckoID]} shares")
+    print(f"\nUpdated [{coinGeckoID}], with {crypto[coinGeckoID]} shares")
 
 
 
@@ -289,23 +289,23 @@ def showBullion(section="totals", quiet=False) -> float:
         goldValue = goldOunce * goldPrice
         subtotal += goldValue
         if not quiet: 
-            print(f"Gold : {goldOunce} at ${goldPrice:.2f}\n Total Gold Value: ${goldValue:.2f}")
+            print(f"\nGold : {goldOunce} at ${goldPrice:.2f}\n Total Gold Value: ${goldValue:.2f}")
     else: 
         if not quiet:
-            print(f"Gold : {bullion.get('gold', 0.0)}oz @ N/A\n Total Gold Value N/A")
+            print(f"\nGold : {bullion.get('gold', 0.0)}oz @ N/A\n Total Gold Value N/A")
     if silverPrice is not None:
         #silverOunce = bullion.get("silver", 0.0)
         silverValue = silverOunce * silverPrice
         subtotal += silverValue
         if not quiet: 
-            print(f"Silver : {silverOunce} at ${silverPrice:.2f}\n Total Gold Value: ${silverValue:.2f}")
+            print(f"\nSilver : {silverOunce} at ${silverPrice:.2f}\n Total Gold Value: ${silverValue:.2f}")
     else:
         if not quiet:
-            print(f"Silver : {bullion.get("silver", 0.0)} at N/A\n Total Gold Value: N/A")
+            print(f"\nSilver : {bullion.get("silver", 0.0)} at N/A\n Total Gold Value: N/A")
     
     if goldPrice is None and silverPrice is None:
         if not quiet: 
-            print("Bullion prices are unavailable right now...\n")
+            print("\nBullion prices are unavailable right now...\n")
     return subtotal
 
 def add_bullion_to_positions():
@@ -323,6 +323,46 @@ def add_bullion_to_positions():
     bullion[bullionGoldORSilver] = bullion.get(bullionGoldORSilver, 0.0) + max(0.0, metalOunce)
     print(f"Updated [{bullionGoldORSilver}], with {bullion[bullionGoldORSilver]} shares")
 
+
+# CASHSHOW
+def showCash(section="totals", quiet=False) -> float:
+        section = (section or "totals").strip().lower()
+        show_cash  = section in ("cash", "e", "totals")  
+        if not show_cash:
+            return 0.0
+        
+        subtotal = 0.0
+        
+        for dictName, quantityDollars in cash.items():
+            if quantityDollars is None: 
+                if not quiet: 
+                    print(f"{dictName}: no dollar amount recorded")
+                continue
+            
+            subtotal += quantityDollars
+            if not quiet: 
+                print(f"{dictName}: ${quantityDollars}")
+        return subtotal
+
+# ITEMS SHOW
+def showItems(section="totals", quiet=False) -> float:
+        section = (section or "totals").strip().lower()
+        show_items  = section in ("items", "e", "totals")  
+        if not show_items:
+            return 0.0
+        
+        subtotal = 0.0
+        
+        for dictName, quantityDollars in cash.items():
+            if quantityDollars is None: 
+                if not quiet: 
+                    print(f"{dictName}: no dollar amount recorded")
+                continue
+            
+            subtotal += quantityDollars
+            if not quiet: 
+                print(f"{dictName}: ${quantityDollars}")
+        return subtotal
 
 
 
@@ -378,9 +418,11 @@ def _main_menu_():
                     print(f"\nGrand Total of Assets: ${Totals:,.2f}")
                     print("\n")
                 elif section in ("e", "cash"):
-                    print("Cash Amount Here")
+                    print("\nCash")
+                    showCash(section="cash", quiet=False)
                 elif section in ("f", "items"):
-                    print("item(s) Here")
+                    print("\nItem(s)")
+                    showItems(section="items", quiet=False)
                 elif section in ("g", "add"):
                     print("\nAdd/Update A Position")
                     print("  1) Stock")
