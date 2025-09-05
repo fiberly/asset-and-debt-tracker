@@ -17,10 +17,11 @@ except Exception:
 
 ## TODO: | remove items | 
 # TODO: gold and silver prices non API?
-## TODO: long term storage, 
+## TODO: long term storage
 # TODO: GUI?
-
-
+# TODO: exit functionality from within menus
+# TODO: removing items with a number instead of writing out
+# TODO: Fix breaking out of loops in menus 
  
 
 # static setting of current holdings
@@ -346,12 +347,40 @@ def showCash(section="totals", quiet=False) -> float:
 
 def add_cash_to_positions():
     try: 
-        quantityCash = float(input("Enter number of dollars and or cents to add: "))
+        ask = input("Enter 1) to add dollars or cents, 2) Exit")
+         
     except ValueError:
         print("Invalid Number Entered")
         return
-    cash["cash"] = cash.get("cash", 0.0) + max(0.0, quantityCash)
-    print(f"\nUpdated available cash, with {cash["cash"]:.2f} dollars")
+    if ask == "1":
+        try: 
+            quantityCash = float(input("Enter number of dollars and or cents to add: "))
+        except ValueError:
+            print("Invalid Number Entered.")
+            return
+        cash["cash"] = cash.get("cash", 0.0) + max(0.0, quantityCash)
+        print(f"\nUpdated available cash, with {cash["cash"]:.2f} dollars")
+    if ask == 2:
+        print("Exiting...")
+        return
+
+def remove_cash_from_position():
+    print("\nRemoving Cash")
+    
+    try: 
+        ask = input("Enter 1) to subtract from cash, 2) to Quit: ")
+        if ask == "1":
+            amount = float(input("Enter an amount to subtract as an whole number with up to two decimal places "))
+            oldBalance = cash["cash"]
+            cash["cash"] = max(0.0, oldBalance - max(0.0, amount))
+            print(f"{cash}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${cash["cash"]:,.2f}")
+        elif ask == "2":
+            print("Exiting...")
+        else: 
+            print("Invalid Input.")
+    except ValueError:
+                print("Invalid Number, please enter something valid")
+        
 
 
 # ITEMS SHOW
@@ -360,7 +389,9 @@ def showItems(section="totals", quiet=False) -> float:
         show_items  = section in ("items", "e", "totals")  
         if not show_items:
             return 0.0
-        
+        if not items:
+            print("No items to remove..")
+            return
         subtotal = 0.0
         
         for itemName, amount in items.items():
@@ -387,7 +418,68 @@ def add_item_to_positions():
     items[itemAdd] = items.get(itemAdd, 0.0) + max(0.0, priceOfItem)
     print(f"\nUpdated [{itemAdd}], with ${items[itemAdd]}")
 
+def remove_item_from_position():
+    if not items:
+        print("No items to remove..")
+        return
+    print("\nCurrent Item(s)")
+    for itemLoop in items.keys():
+        print(itemLoop)
+    print("\n")
+    print("Please enter: \n 1) Lower value of item\n 2) Remove item completely\n 3) Exit")
+    while True: 
+        inputForDollarAmountRemoval = input("Select 1) Lower value of item, 2) Remove item completely or 3) Exit: ").strip()
+        
+        if inputForDollarAmountRemoval == "3":
+            print("Exiting...")
+            break
+        
+        if inputForDollarAmountRemoval == "1":
+            for itemLoop in items.keys():
+                print(itemLoop)
+                
+            itemSelection = input("Enter item name to lower dollar amount: ").strip()
+            if itemSelection == "3":
+                print("Exiting...")
+                break
+            if itemSelection not in items.keys():
+                print("Please enter an item from the list.")
+                return
+            
 
+            match = next((matches for matches in items if matches.lower() == itemSelection.lower()), None)
+            
+            try: 
+                amount = float(input("\nEnter [EXIT] to exit.\nEnter an amount to subtract as  whole number with up to two decimal places\n e.g. 10.75, 10, 5.50, etc. ").strip())
+                if amount == "EXIT".strip().upper():
+                    return
+                oldBalance = items[match]
+                items[match] = max(0.0, oldBalance - max(0.0, amount))
+                print(f"{match}: \nOld item price ${oldBalance:,.2f} \nNew item price ${items[match]:,.2f}")
+                break
+            except ValueError:
+                    print("Exiting...")
+        else:
+            print("Enter a valid dollar amount.")
+            
+        
+            for itemLoop in items.keys():
+                print(itemLoop)
+            print("Enter the name exactly as shown under Current Item(s), or enter 3 to exit.")
+            if inputForDollarAmountRemoval == "2": 
+                itemRemoval = input("Enter an item name to remove: ").strip()
+                if itemRemoval == "3":
+                    print("Exiting...")
+                    break
+                matchItemRemoval = next((matches for matches in items if matches.lower() == itemRemoval.lower()), None)
+                if matchItemRemoval: 
+                    del items[matchItemRemoval]
+                    print(f"\nRemoved {matchItemRemoval} from items")
+                    return
+                else: 
+                    print("Item Not Found")
+        break
+    
 
 # MAIN MENU
 def _main_menu_():
@@ -407,11 +499,12 @@ def _main_menu_():
                 print("  e) Cash ")
                 print("  f) Items")
                 print("  g) Add/Update Position")
-                print("  h) Exit")
+                print("  h) Remove/Delete Position")
+                print("  i) Exit")
                 entry = input("Choose a/b/c/d/e/f/g or h: ").strip().lower()
-                section = {"a": "stocks", "b": "crypto", "c": "bullion", "d": "totals", "h": "exit", "e": "cash", "f": "items", "g": "add"}
+                section = {"a": "stocks", "b": "crypto", "c": "bullion", "d": "totals", "e": "cash", "f": "items", "g": "add", "h": "remove", "i": "exit"}
                 
-                if entry in ("h", "exit"):
+                if entry in ("i", "exit"):
                     break 
 
                 if entry not in section:
@@ -472,7 +565,27 @@ def _main_menu_():
                         print("Please enter a number being 1, 2, 3, 4, 5 or 6")
                     else: 
                         print("Error")
-                if entry not in section:
+                elif section in ("h", "remove"):
+                    print("Select something to lower position size")
+                    print("\nAdd/Update A Position")
+                    print("  1) Stock")
+                    print("  2) Crypto (CoinGecko ID)")
+                    print("  3) Bullion (gold|Silver)")
+                    print("  4) Cash")
+                    print("  5) Item")
+                    print("  6) Exit")
+                    removeInput = input("Please select either 1, 2, 3, 4, 5 or 6: ").strip()
+                    if removeInput == "1":
+                        pass
+                    if removeInput == "2":
+                        pass
+                    if removeInput == "3":
+                        pass
+                    if removeInput == "4": 
+                        remove_cash_from_position()
+                    if removeInput == "5": 
+                        remove_item_from_position()
+                elif entry not in section:
                     print("Please enter one of the letter choice")
                 else: 
                     print("Invalid Selection, Please Enter a/b/c/d/e/f or g")
