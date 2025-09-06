@@ -258,6 +258,8 @@ def remove_stock_from_positions():
 def showCrypto(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
         show_crypto  = section in ("crypto", "cryptos", "b", "totals")  
+        if not crypto:
+            print("No crypto was/is saved.")
         if not show_crypto:
             return 0.0
         if CoinGeckoAPI is None:
@@ -285,7 +287,7 @@ def showCrypto(section="totals", quiet=False) -> float:
 def add_crypto_to_positions():
     coinGeckoID = input("Enter CoinGecko ID, e.g. bitcoin: ").strip()
     if not coinGeckoID:
-        print("canceled")
+        print("Canceled")
         return
     try: 
         quantityCrypto = float(input("Enter number of units to add: "))
@@ -296,7 +298,34 @@ def add_crypto_to_positions():
     print(f"\nUpdated [{coinGeckoID}], with {crypto[coinGeckoID]} shares")
 
 def remove_crypto_from_positions():
-    pass
+    if not crypto:
+        print("No crypto position(s)")
+        return
+    print("Current Crypto Positions: ")
+    for name, keys in crypto.items():
+        print(f"{name} : {keys} unit(s)/share(s)")
+    coinGeckoID = input("Enter CoinGecko ID, e.g. bitcoin: ").strip()
+    if not coinGeckoID:
+        print("Canceled")
+        return
+    try: 
+        quantityCrypto = float(input("Enter number of units to remove: "))
+    except ValueError:
+        print("Invalid Number Entered")
+        return
+    
+    oldQuantityCrypto = crypto.get(coinGeckoID, 0.0)
+    newQuantityCrypto = max(0.0, oldQuantityCrypto - quantityCrypto)
+
+    if newQuantityCrypto < 1e-12:
+        del crypto[coinGeckoID]
+        print(f"Removed {coinGeckoID}, 0 share(s)/unit(s) remaining")
+    else: 
+        crypto[coinGeckoID] = newQuantityCrypto
+        print(f"Updated {coinGeckoID} to {newQuantityCrypto}, (removed {quantityCrypto})")
+
+    #print(f"\nUpdated [{coinGeckoID}], with {crypto[coinGeckoID]} unit(s)/share(s)")
+
 
 
 
@@ -379,6 +408,8 @@ def add_bullion_to_positions():
 
 def remove_bullion_from_positions():
     pass
+
+
 
 
 # CASHSHOW
@@ -623,7 +654,7 @@ def _main_menu_():
                         print("Error")
                 elif section in ("h", "remove"):
                     print("Select something to lower position size")
-                    print("\nAdd/Update A Position")
+                    print("\nLower/Remove A Position")
                     print("  1) Stock")
                     print("  2) Crypto (CoinGecko ID)")
                     print("  3) Bullion (gold|Silver)")
