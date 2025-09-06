@@ -20,7 +20,7 @@ except Exception:
 ## TODO: long term storage
 # TODO: GUI?
 # TODO: exit functionality from within menus
-# TODO: removing items with a number instead of writing out
+# TODO: removing items with a number instead of writing out stocks has, crypto needs
 # TODO: Fix breaking out of loops in menus 
  
 
@@ -407,7 +407,31 @@ def add_bullion_to_positions():
     print(f"Updated [{bullionGoldORSilver}], with {bullion[bullionGoldORSilver]} shares")
 
 def remove_bullion_from_positions():
-    pass
+    print("Bullion Assets")
+    for name, quantity in bullion.items():
+        print(f"{name} : {quantity} oz(s)")
+    bullionGoldORSilver = input("Enter metal [gold | silver]: ").strip().lower()
+    if bullionGoldORSilver in ("au", "xau"): bullionGoldORSilver = "gold"
+    if bullionGoldORSilver in ("ag", "xag"): bullionGoldORSilver = "silver"
+    if bullionGoldORSilver not in ("gold", "silver"):
+        print("Please enter either gold or silver...")
+        return
+    try: 
+        metalOunce = float(input("Enter number of units to remove: ").strip())
+    except ValueError:
+        print("Invalid Number Entered")
+        return
+    oldQuantityBullion = bullion.get(bullionGoldORSilver, 0.0)
+    newQuantityBullion = max(0.0, oldQuantityBullion - metalOunce)
+
+    if newQuantityBullion < 1e-12:
+        del crypto[bullionGoldORSilver]
+        print(f"Removed {bullionGoldORSilver}, 0 share(s)/unit(s) remaining")
+    else: 
+        bullion[bullionGoldORSilver] = newQuantityBullion
+        print(f"\nUpdated {bullionGoldORSilver} to {newQuantityBullion:.2f}, (removed {metalOunce})")
+
+
 
 
 
@@ -467,6 +491,8 @@ def remove_cash_from_position():
             print("Invalid Input.")
     except ValueError:
                 print("Invalid Number, please enter something valid")
+
+
         
 
 
