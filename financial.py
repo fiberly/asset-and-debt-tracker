@@ -181,6 +181,9 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=False) -> dict[str, 
                             print(f"\n{ticker}: {quantity} shares at ${tickerPrice:.2f} each, Total Value: ${TotalValue:.2f}")
                 if section not in ("stocks", "stock", "a", "totals"):
                     print("Invalid Input")
+        if not Stocks:
+            print("No stock(s) in positions.")
+            return
     except Exception as e:
         if not quiet: 
             print(f"\nError retrieving data for ticker:", e)
@@ -199,6 +202,54 @@ def add_stock_to_positions():
         return
     Stocks[StockTicker] = Stocks.get(StockTicker, 0.0) + max(0.0, quantityStock)
     print(f"Updated [{StockTicker}], with {Stocks[StockTicker]} shares")
+
+def remove_stock_from_positions():
+    print("Stock List")
+    if not Stocks:
+        print("No stock position(s)")
+        return
+    keysSorted = sorted(Stocks.keys())
+    for number, key in enumerate(keysSorted, 1):
+        print(f"{number}, {key},  {Stocks[key]} shares")
+    
+
+    StockTickerRemove = input("Enter stock ticker symbol, e.g. AAPL: ").strip().upper()
+    if not StockTickerRemove:
+        print("Cancelled")
+        return
+    
+    ticker = None   
+    if StockTickerRemove.isdigit():
+        ids = int(StockTickerRemove)
+        if 1 <= ids <= len(keysSorted):
+            ticker = keysSorted[ids - 1]     
+    if ticker is None: 
+        ticker = StockTickerRemove.upper()
+    if ticker not in Stocks:
+        print("Please enter a stock from the list.")
+        return
+    try: 
+        quantityStock = float(input("Enter number of shares to remove: ").strip())
+    except ValueError:
+        print("Invalid Number Entered")
+        return
+    
+    if quantityStock < 0:
+        print("Please enter a positive number.")
+        return
+    
+    oldQuantity = float(Stocks.get(ticker, 0.0))
+    newQuantity = max(0.0, oldQuantity - quantityStock)
+
+    if newQuantity <= 1e-12:
+        del Stocks[ticker]
+        print(f"Removed {ticker}, 0 shares remaining.")
+    else: 
+        Stocks[ticker] = newQuantity
+        print(f"Updated {ticker}, {newQuantity} shares, (removed {quantityStock})")
+
+    #Stocks[StockTickerRemove] = Stocks.get(StockTickerRemove, 0.0) - max(0.0, quantityStock)
+    #print(f"Updated [{StockTickerRemove}], with {Stocks[StockTickerRemove]} shares")
 
 
 
@@ -244,6 +295,8 @@ def add_crypto_to_positions():
     crypto[coinGeckoID] = crypto.get(coinGeckoID, 0.0) + max(0.0, quantityCrypto)
     print(f"\nUpdated [{coinGeckoID}], with {crypto[coinGeckoID]} shares")
 
+def remove_crypto_from_positions():
+    pass
 
 
 
@@ -323,6 +376,9 @@ def add_bullion_to_positions():
         return
     bullion[bullionGoldORSilver] = bullion.get(bullionGoldORSilver, 0.0) + max(0.0, metalOunce)
     print(f"Updated [{bullionGoldORSilver}], with {bullion[bullionGoldORSilver]} shares")
+
+def remove_bullion_from_positions():
+    pass
 
 
 # CASHSHOW
@@ -576,11 +632,11 @@ def _main_menu_():
                     print("  6) Exit")
                     removeInput = input("Please select either 1, 2, 3, 4, 5 or 6: ").strip()
                     if removeInput == "1":
-                        pass
+                        remove_stock_from_positions()
                     if removeInput == "2":
-                        pass
+                        remove_crypto_from_positions()
                     if removeInput == "3":
-                        pass
+                        remove_bullion_from_positions()
                     if removeInput == "4": 
                         remove_cash_from_position()
                     if removeInput == "5": 
