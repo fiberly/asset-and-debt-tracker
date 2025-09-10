@@ -15,21 +15,29 @@ except Exception:
 
 
 
-## TODO: | remove items | 
-# TODO: gold and silver prices non API?
-## TODO: long term storage
+
+## TODO: long term storage -> last saved price(s)?
 # TODO: GUI?
 # TODO: exit functionality from within menus
 # TODO: removing items with a number instead of writing out stocks has, crypto needs
 # TODO: Fix breaking out of loops in menus 
- 
+ # TODO: lower() for the exit words
+ # TODO: ebay item lookup
+ # TODO: Value over entry of input check, such as dollar amounts...
+# TODO: offline stock check error over printing information
+# TODO: First time use asset additions and debt additions
+# TODO: motivational moments within the app
+# TODO: Caching/saving the last loaded asset price
+
+
 
 # static setting of current holdings
 Stocks = {"AMZN": 1.0}
 crypto = {"pi-network": 1700.0}
 bullion = {"gold": 1.1, "silver": 16.0}
-cash = {"cash": 0}
+cash = {"cash": 0.0}
 items = {"bicycle": 1000.0, "4090 Gigabyte": 2000.0}
+debt = {"Apple Card": 2144.00, "Venture One": 2501.00}
 
 
 
@@ -50,113 +58,21 @@ def getPrice(ticker: str) -> float | None:
         information = tick.info
         if "regularMarketPrice" in information:
             return float(information["regularMarketPrice"])
-    except Exception as e:
-        print(f"Error retrieving the price for {ticker}: {e}")
+    except Exception:
+        print(f"Error retrieving the price for {ticker}")
     return None
 
 
 
 
 
-# DEBT TRACKER
-def debtTracker():
-    debt = {"Apple Card": 2144.00, "Venture One": 2501.00}
-    while True: 
-        print("\nDebt Tracker")
-        print(" 1. View Debt\n 2. Add Debt\n 3. Subtract Debt\n 4. Remove Debt Account\n 5. Exit")
-        debtInput = input("Input a value ").strip()
-        if debtInput == "1":
-            if not debt:
-                print("No debt(s) recorded")
-            else: 
-                print("\nCurrent Debts")
-                for name, amount in debt.items():
-                    print(f"{name}: ${amount:.2f}")
-                    continue
-            continue
-        elif debtInput == "2":
-            if debt:
-                print("Selectable debt account(s)")
-                for name in debt.keys():
-                    print(f"Current Selectable Choices for Debt Accounts: \n{name}")
-            print("Type [quit] to return to the main menu")
-            debtSelect = input("Enter the name of a debt account: ")
-            AccountMatch = next((match for match in debt if match.lower() == debtSelect.lower()), None)
-            if debtSelect == "quit":
-                continue
-            if not AccountMatch:
-                while True: 
-                    print(f"Account [{debtSelect}] not found, would you like to add the account?")
-                    yorn = input("Enter y or n: ").strip().lower()
-                    if yorn in ("y"):
-                        AccountMatch = debtSelect
-                        debt[AccountMatch] = 0.0
-                        print(f"Created Account {AccountMatch},  Successfully!")
-                        break
-                    elif yorn in ("n"):
-                        print("The account will not be added.")
-                        break
-                    else: 
-                        print("please enter a valid y or n")
-            if not AccountMatch:
-                continue
-            try: 
-                print("Remember, the banks do not mind the monthly payment")
-                print("Suggestion to sign on for payment plans you can afford")
-                print("Try not to leave unpaid balances at months end")
-                debtAddition = float(input("Enter a number to add to the debt: ").strip())  
-            except ValueError: 
-                print("Invalid input, try again.")    
-                continue
-            debt[AccountMatch] = debt.get(AccountMatch, 0.0) + max(0.0, debtAddition)
-            print(f"Debt and account added: {AccountMatch}: ${debt[AccountMatch]:,.2f}")
-            #print(f"{AccountMatch}: {debt[AccountMatch]:.2f}")
-        elif debtInput == "3":
-             if not debt: 
-                 print("No debt accounts found")
-                 continue
-             print("Current Debt Accounts:")
-             for name in debt.keys():
-                 print(f"{name}")
-             removeAmount = input("Enter the account name to subtract debt from ").strip()
-             match = next((matches for matches in debt if matches.lower() == removeAmount.lower()), None)
-             if not match:
-                print("Account Not Found")
-                continue
-             try: 
-                 amount = float(input("Enter an amount to subtract as an whole number with up to two decimal places "))
-             except ValueError:
-                 print("Invalid Number, please enter something valid")
-                 continue
-             oldBalance = debt[match]
-             debt[match] = max(0.0, oldBalance - max(0.0, amount))
-             print(f"{match}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${debt[match]:,.2f}")
-        elif debtInput == "4":
-            name = input("Enter the name of the debt account to remove: ").strip()
-            if name in debt: 
-                del debt[name]
-                print(f"Removed {name} from debts")
-            else: 
-                print("Account Not Found")
-            continue
-        elif debtInput == "5":
-            break
-        else: 
-            print("Please enter a valid choice")
-            continue
-
-        
-
-
 
 # STOCK
 # takes the ticker symbol and and quantity and returns prices
-def parse_positions(s= "AMZN: 1.0", section="totals", quiet=False) -> dict[str, float]:
-
+def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> dict[str, float]:
     section = (section or "totals").strip().lower()
     show_stocks  = section in ("stocks", "stock", "a", "totals")    
     tickerANDAmounts = s.split(",")
-
     extraRemoved = [strippedParts.strip() for strippedParts in tickerANDAmounts]
     outputDictionary = {}
     for splitParts in extraRemoved: 
@@ -166,7 +82,6 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=False) -> dict[str, 
     try:   
         if show_stocks: 
             for ticker, quantity in Stocks.items():
-                #tickerInformation = yfinance.Ticker(ticker)
                 tickerPrice = getPrice(ticker)
                 if tickerPrice is None:
                     if not quiet:
@@ -174,12 +89,11 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=False) -> dict[str, 
                     continue
                 TotalValue = tickerPrice * quantity
                 subtotal += TotalValue
-                
                 if show_stocks: 
-                    if section in ("stocks", "stock", "a", "totals"):
+                    if section in ("stocks", "stock", "1", "totals"):
                         if not quiet:
                             print(f"\n{ticker}: {quantity} shares at ${tickerPrice:.2f} each, Total Value: ${TotalValue:.2f}")
-                if section not in ("stocks", "stock", "a", "totals"):
+                if section not in ("stocks", "stock", "1", "totals"):
                     print("Invalid Input")
         if not Stocks:
             print("No stock(s) in positions.")
@@ -187,7 +101,6 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=False) -> dict[str, 
     except Exception as e:
         if not quiet: 
             print(f"\nError retrieving data for ticker:", e)
-        
     return subtotal
 
 def add_stock_to_positions():
@@ -211,13 +124,10 @@ def remove_stock_from_positions():
     keysSorted = sorted(Stocks.keys())
     for number, key in enumerate(keysSorted, 1):
         print(f"{number}, {key},  {Stocks[key]} shares")
-    
-
     StockTickerRemove = input("Enter stock ticker symbol, e.g. AAPL: ").strip().upper()
     if not StockTickerRemove:
         print("Cancelled")
         return
-    
     ticker = None   
     if StockTickerRemove.isdigit():
         ids = int(StockTickerRemove)
@@ -233,14 +143,11 @@ def remove_stock_from_positions():
     except ValueError:
         print("Invalid Number Entered")
         return
-    
     if quantityStock < 0:
         print("Please enter a positive number.")
         return
-    
     oldQuantity = float(Stocks.get(ticker, 0.0))
     newQuantity = max(0.0, oldQuantity - quantityStock)
-
     if newQuantity <= 1e-12:
         del Stocks[ticker]
         print(f"Removed {ticker}, 0 shares remaining.")
@@ -248,8 +155,7 @@ def remove_stock_from_positions():
         Stocks[ticker] = newQuantity
         print(f"Updated {ticker}, {newQuantity} shares, (removed {quantityStock})")
 
-    #Stocks[StockTickerRemove] = Stocks.get(StockTickerRemove, 0.0) - max(0.0, quantityStock)
-    #print(f"Updated [{StockTickerRemove}], with {Stocks[StockTickerRemove]} shares")
+
 
 
 
@@ -313,10 +219,8 @@ def remove_crypto_from_positions():
     except ValueError:
         print("Invalid Number Entered")
         return
-    
     oldQuantityCrypto = crypto.get(coinGeckoID, 0.0)
     newQuantityCrypto = max(0.0, oldQuantityCrypto - quantityCrypto)
-
     if newQuantityCrypto < 1e-12:
         del crypto[coinGeckoID]
         print(f"Removed {coinGeckoID}, 0 share(s)/unit(s) remaining")
@@ -324,7 +228,7 @@ def remove_crypto_from_positions():
         crypto[coinGeckoID] = newQuantityCrypto
         print(f"Updated {coinGeckoID} to {newQuantityCrypto}, (removed {quantityCrypto})")
 
-    #print(f"\nUpdated [{coinGeckoID}], with {crypto[coinGeckoID]} unit(s)/share(s)")
+
 
 
 
@@ -332,41 +236,29 @@ def remove_crypto_from_positions():
 
 #BULLION PRICE
 def showBullion(section="totals", quiet=False) -> float:
-    api_key = "5ebce4f9043996096c6855b1bee178a1"
-    url = f"https://api.metalpriceapi.com/v1/latest?api_key={api_key}&base=USD&currencies=XAU,XAG"
-    headers = {"x-access-token": api_key, "Content-Type": "application/json", "Accept": "application/json"}
+    url = "https://api.gold-api.com"
     if requests is not None: 
         try: 
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            rates = (data or {}).get("rates") or {}
-            xau = rates.get("XAU")
-            xag = rates.get("XAG")
-            gold_price = (1 / xau) if xau else None
-            silver_price = (1 / xag) if xag else None
+            xau = requests.get(f"{url}/price/XAU", timeout=10).json()["price"]  # USD/oz
+            xag = requests.get(f"{url}/price/XAG", timeout=10).json()["price"]
         except Exception as e:
-            #print(f"Error fetching metal prices: {e}")
-            gold_price = None
-            silver_price = None
+            xau = None
+            xag = None
     else: 
-        gold_price = None
-        silver_price = None
-
+        xau = None
+        xag = None
     section = (section or "totals").strip().lower()
     show_bullion = section in ("bullion", "c", "totals")           
-    
     if not show_bullion: 
         return 0.0
     subtotal = 0.0
     try: 
-        goldPrice = float(gold_price) if gold_price is not None else None
-        silverPrice = float(silver_price) if silver_price is not None else None
+        goldPrice = float(xau) if xau is not None else None
+        silverPrice = float(xag) if xag is not None else None
     except NameError:
         goldPrice = silverPrice = None
     goldOunce = bullion.get("gold", 0.0)
     silverOunce = bullion.get("silver", 0.0)
-       
     if goldPrice is not None:
        # goldOunce = bullion.get("gold", 0.0)
         goldValue = goldOunce * goldPrice
@@ -423,7 +315,6 @@ def remove_bullion_from_positions():
         return
     oldQuantityBullion = bullion.get(bullionGoldORSilver, 0.0)
     newQuantityBullion = max(0.0, oldQuantityBullion - metalOunce)
-
     if newQuantityBullion < 1e-12:
         del crypto[bullionGoldORSilver]
         print(f"Removed {bullionGoldORSilver}, 0 share(s)/unit(s) remaining")
@@ -439,18 +330,18 @@ def remove_bullion_from_positions():
 # CASHSHOW
 def showCash(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
-        show_cash  = section in ("cash", "e", "totals")  
+        show_cash  = section in ("cash", "e", "totals") 
+        if not cash: 
+            print("Cash Available is $0") 
+            return
         if not show_cash:
             return 0.0
-        
         subtotal = 0.0
-        
         for dictName, quantityDollars in cash.items():
             if quantityDollars is None: 
                 if not quiet: 
                     print(f"{dictName}: no dollar amount recorded")
                 continue
-            
             subtotal += quantityDollars
             if not quiet: 
                 print(f"{dictName}: ${quantityDollars}")
@@ -458,8 +349,7 @@ def showCash(section="totals", quiet=False) -> float:
 
 def add_cash_to_positions():
     try: 
-        ask = input("Enter 1) to add dollars or cents, 2) Exit")
-         
+        ask = input("Type and press enter a number:  1) to add dollars or cents, 2) Exit : ")
     except ValueError:
         print("Invalid Number Entered")
         return
@@ -471,15 +361,14 @@ def add_cash_to_positions():
             return
         cash["cash"] = cash.get("cash", 0.0) + max(0.0, quantityCash)
         print(f"\nUpdated available cash, with {cash["cash"]:.2f} dollars")
-    if ask == 2:
+    if ask == "2":
         print("Exiting...")
         return
 
 def remove_cash_from_position():
     print("\nRemoving Cash")
-    
     try: 
-        ask = input("Enter 1) to subtract from cash, 2) to Quit: ")
+        ask = input("Type and press enter a number:  1) to subtract from cash, 2) to Quit: ")
         if ask == "1":
             amount = float(input("Enter an amount to subtract as an whole number with up to two decimal places "))
             oldBalance = cash["cash"]
@@ -542,15 +431,12 @@ def remove_item_from_position():
     print("Please enter: \n 1) Lower value of item\n 2) Remove item completely\n 3) Exit")
     while True: 
         inputForDollarAmountRemoval = input("Select 1) Lower value of item, 2) Remove item completely or 3) Exit: ").strip()
-        
         if inputForDollarAmountRemoval == "3":
             print("Exiting...")
             break
-        
         if inputForDollarAmountRemoval == "1":
             for itemLoop in items.keys():
                 print(itemLoop)
-                
             itemSelection = input("Enter item name to lower dollar amount: ").strip()
             if itemSelection == "3":
                 print("Exiting...")
@@ -558,10 +444,7 @@ def remove_item_from_position():
             if itemSelection not in items.keys():
                 print("Please enter an item from the list.")
                 return
-            
-
             match = next((matches for matches in items if matches.lower() == itemSelection.lower()), None)
-            
             try: 
                 amount = float(input("\nEnter [EXIT] to exit.\nEnter an amount to subtract as  whole number with up to two decimal places\n e.g. 10.75, 10, 5.50, etc. ").strip())
                 if amount == "EXIT".strip().upper():
@@ -574,8 +457,6 @@ def remove_item_from_position():
                     print("Exiting...")
         else:
             print("Enter a valid dollar amount.")
-            
-        
             for itemLoop in items.keys():
                 print(itemLoop)
             print("Enter the name exactly as shown under Current Item(s), or enter 3 to exit.")
@@ -594,65 +475,210 @@ def remove_item_from_position():
         break
     
 
+
+
+
+
+# DEBT TRACKER
+def debtTracker():
+    while True: 
+        print("\nDebt Tracker")
+        print(" 1) View Debt\n 2) Add Debt\n 3) Subtract Debt\n 4) Remove Debt Account\n 5) Total Debt\n 6) Exit")
+        debtInput = input("Input a number: ").strip()
+        if debtInput == "1":
+            if not debt:
+                print("No debt(s) recorded")
+            else: 
+                print("\nCurrent Debts")
+                for name, amount in debt.items():
+                    print(f"{name}: ${amount:.2f}")
+                    continue
+            continue
+        elif debtInput == "5":
+                debtTotal = sum(debt.values())
+                print(f"\nTotal debt: ${debtTotal:.2f}")
+        elif debtInput == "2":
+            if debt:
+                print(f"\nCurrent Selectable Choices for Debt Accounts: ")
+                for name in debt.keys():
+                    print(f"{name}")
+            print("Type [exit] and press enter to return to the menu.")
+            debtSelect = input("Enter the name of a debt account: ")
+            AccountMatch = next((match for match in debt if match.lower() == debtSelect.lower()), None)
+            if debtSelect == "exit":
+                print("Exiting...")
+                continue
+            if not AccountMatch:
+                while True: 
+                    print(f"Account [{debtSelect}] not found, would you like to add the account?")
+                    yorn = input("Enter y or n: ").strip().lower()
+                    if yorn in ("y"):
+                        AccountMatch = debtSelect
+                        debt[AccountMatch] = 0.0
+                        print("--- Suggestion: Sign on for payment plans you can afford / manage. ---")
+                        print(f"Created Account {AccountMatch},  Successfully!")
+                        break
+                    elif yorn in ("n"):
+                        print("The account will not be added.")
+                        break
+                    else: 
+                        print("please enter a valid y or n")
+            if not AccountMatch:
+                continue
+            print("Type [exit] and press enter to return to the menu.")
+            try: 
+                debtAddition = float(input("\nEnter a number to add to the debt: ").strip())
+                if debtAddition == "exit":
+                    print("Exiting...")
+                    continue
+                debt[AccountMatch] = debt.get(AccountMatch, 0.0) + max(0.0, debtAddition)
+                print("\n--- Try not to leave unpaid balances at months end. ---")
+                print(f"Debt added: {AccountMatch}: ${debt[AccountMatch]:,.2f}")
+            except ValueError: 
+                print("Invalid input, please try again.")    
+                continue
+        elif debtInput == "3":
+             if not debt: 
+                 print("\nNo debt accounts found")
+                 continue
+             print("\nCurrent Debt Accounts:")
+             print("--- Remember, the banks do not mind the monthly payment. ---")
+             for name in debt.keys():
+                 print(f"{name}")
+             print("Type [exit] and press enter to return to the menu.")
+             removeAmount = input("Enter the account name to subtract debt from: ").strip()
+             match = next((matches for matches in debt if matches.lower() == removeAmount.lower()), None)
+             if removeAmount == "exit":
+                print("Exiting...")
+                continue
+             if not match:
+                print("Account Not Found")
+                continue
+             amount = input("Enter an amount to subtract as a whole number with up to two decimal places: ").strip()
+             if amount == "quit":
+                print("Exiting...")
+                continue    
+             try: 
+                amountCheck = float(amount)
+             except ValueError:
+                 print("Invalid Number, please enter something valid")
+                 continue
+             if amountCheck < 0:
+                print("Please enter a positive Number")
+                continue
+             oldBalance = debt[match]
+             newBalance = max(0.0, oldBalance - amountCheck)
+             debt[match] = newBalance
+             print(f"{match}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${newBalance:,.2f}")
+        elif debtInput == "4":
+            print("Type [exit] and press enter to return to the menu.")
+            name = input("\nEnter the name of the debt account to remove: ").strip()
+            if name.lower() == "exit":
+                print("Exiting...")
+                continue
+            if name in debt: 
+                del debt[name]
+                print(f"Removed {name} from debts")
+            else: 
+                print("Account Not Found")
+            continue
+        elif debtInput == "6":
+            print("Exiting...")
+            break
+        else: 
+            print("Please enter a valid choice")
+            continue
+
+
+
+
+
+
+def itemPriceChecker():
+    print("item price check coming soon")
+    return
+
+
+
+
+
 # MAIN MENU
 def _main_menu_():
     while True: 
-        print("\nWelcome to the asset and debt tracker!")
-        print("1. positions")
-        print("2. debt")
-        print("3. exit")
-        choice = input("Enter a choice of 1, 2 or 3: ")
+        print("\nWelcome to the asset, debt and item price tracker!")
+        print("1) positions")
+        print("2) debt")
+        print("3) item price")
+        print("4) Exit")
+        choice = input("Enter a choice of 1, 2, 3 or 4: ")
         if choice == "1":
             while True: 
                 print("\nPositions")
-                print("  a) Stocks")
-                print("  b) Crypto")
-                print("  c) Bullion")
-                print("  d) Totals")
-                print("  e) Cash ")
-                print("  f) Items")
-                print("  g) Add/Update Position")
-                print("  h) Remove/Delete Position")
-                print("  i) Exit")
-                entry = input("Choose a/b/c/d/e/f/g or h: ").strip().lower()
-                section = {"a": "stocks", "b": "crypto", "c": "bullion", "d": "totals", "e": "cash", "f": "items", "g": "add", "h": "remove", "i": "exit"}
-                
-                if entry in ("i", "exit"):
+                print("  1) Stocks")
+                print("  2) Crypto")
+                print("  3) Bullion")
+                print("  4) Totals")
+                print("  5) Cash ")
+                print("  6) Items")
+                print("  7) Add/Update Position")
+                print("  8) Remove/Delete Position")
+                print("  9) Exit")
+                entry = input("Choose 1/2/3/4/5/6/7/8 or 9: ").strip().lower()
+                section = {"1": "stocks", "2": "crypto", "3": "bullion", "4": "totals", "5": "cash", "6": "items", "7": "add", "8": "remove", "9": "exit"}
+                if entry in ("9", "exit"):
                     break 
-
                 if entry not in section:
                     print("Invalid Selection, please enter a different choice. ")
                     continue
                 else: 
                     section = section[entry]
-
-                if section in ("stocks", "stock", "a"):
-                    parse_positions(section="stocks")
-                elif section in ("crypto", "cryptos", "b"):
+                if section in ("stocks", "stock", "1"):
+                    parse_positions(section="stocks", quiet=False)
+                elif section in ("crypto", "cryptos", "2"):
                     showCrypto(section="crypto")
-                elif section in ("bullion", "c"):
+                elif section in ("bullion", "3"):
                     showBullion(section="bullion")
-                elif section in ("d", "totals"):
+                elif section in ("4", "totals"):
                     print("\n Totals:  ")
-                    print("\n Stocks ")
-                    parse_positions(section="stocks")
-                    print("\n Crypto ")
-                    showCrypto(section="crypto")
-                    print("\n Bullion")
-                    showBullion(section="bullion")
                     stockTotal = parse_positions(section="stocks", quiet=True) or 0.0
+                    print(f"\nStock Dollar Total: \n ${stockTotal:.2f}")
                     cryptoTotal = showCrypto(section="crypto", quiet=True) or 0.0
+                    print(f"\nCrypto Dollar Total: \n ${cryptoTotal:.2f}")
                     bullionTotal = showBullion(section="bullion", quiet=True) or 0.0
-                    Totals = stockTotal + cryptoTotal + bullionTotal
-                    print(f"\nGrand Total of Assets: ${Totals:,.2f}")
+                    print(f"\nBullion Dollar Total: \n ${bullionTotal:.2f}")
+                    print("\nCash Dollar Total: ")
+                    if not cash: 
+                        print("Cash Available is $0")
+                    else: 
+                        cashTotal = cash["cash"]
+                        print(f" ${cashTotal:.2f}")
+                    print("\nItem(s) Dollar Total: ")
+                    cashTotal = sum(cash.values())
+                    itemTotal = sum(items.values())
+                    print(f" ${itemTotal}")
+                    StockCryptoBullionTotals = stockTotal + cryptoTotal + bullionTotal
+                    print("\nStock, Cryptocurrency and Bullion Totals: ")
+                    print(f" ${StockCryptoBullionTotals:.2f}")
+                    print(f"\nStock, Cryptocurreny, Bullion and Cash Totals")
+                    StockCryptoBullionCashTotals = StockCryptoBullionTotals + cashTotal
+                    print(f" ${StockCryptoBullionCashTotals:.2f}")
+                    GrandTotals = stockTotal + cryptoTotal + bullionTotal + cashTotal + itemTotal
+                    print(f"\nGrand Total of Stock, Cryptocurrency, Bullion, Cash and Item(s): \n ${GrandTotals:,.2f}")
+                    debtTotal = sum(debt.values())
+                    print(f"\nTotals for Stock, Cryptocurrency, Bullion, Cash minus the debt accounts")
+                    AssetSubtractionMinusItems = StockCryptoBullionCashTotals - debtTotal
+                    print(f" ${AssetSubtractionMinusItems:.2f}")
+                    print(f"\nTotals after Stock, Cryptocurrency, Bullion, Cash and Item(s) minus the debt accounts")
+                    TotalAssetSubtraction = GrandTotals - debtTotal
+                    print(f" ${TotalAssetSubtraction:.2f}")
                     print("\n")
-                elif section in ("e", "cash"):
+                elif section in ("5", "cash"):
                     print("\nCash")
                     showCash(section="cash", quiet=False)
-                elif section in ("f", "items"):
+                elif section in ("6", "items"):
                     print("\nItem(s)")
                     showItems(section="items", quiet=False)
-                elif section in ("g", "add"):
+                elif section in ("7", "add"):
                     print("\nAdd/Update A Position")
                     print("  1) Stock")
                     print("  2) Crypto (CoinGecko ID)")
@@ -674,11 +700,11 @@ def _main_menu_():
                     if selectionUpdate == "6":
                         print("Exiting...")
                         continue
-                    if selectionUpdate not in [1, 2, 3, 4, 5, 6]:
-                        print("Please enter a number being 1, 2, 3, 4, 5 or 6")
-                    else: 
-                        print("Error")
-                elif section in ("h", "remove"):
+                    if selectionUpdate not in ["1", "2", "3", "4", "5", "6"]:
+                        print("\nPlease enter a number being 1, 2, 3, 4, 5 or 6")
+                    else:
+                        continue
+                elif section in ("8", "remove"):
                     print("Select something to lower position size")
                     print("\nLower/Remove A Position")
                     print("  1) Stock")
@@ -687,7 +713,7 @@ def _main_menu_():
                     print("  4) Cash")
                     print("  5) Item")
                     print("  6) Exit")
-                    removeInput = input("Please select either 1, 2, 3, 4, 5 or 6: ").strip()
+                    removeInput = input("\nPlease select either 1, 2, 3, 4, 5 or 6: ").strip()
                     if removeInput == "1":
                         remove_stock_from_positions()
                     if removeInput == "2":
@@ -699,14 +725,17 @@ def _main_menu_():
                     if removeInput == "5": 
                         remove_item_from_position()
                 elif entry not in section:
-                    print("Please enter one of the letter choice")
+                    print("Please enter one of the number choices")
                 else: 
-                    print("Invalid Selection, Please Enter a/b/c/d/e/f or g")
+                    print("Invalid Selection, Please Enter 1/2/3/4/5/6/7/8 or 9")
         elif choice == "2":
             debtTracker()
         elif choice == "3":
+            itemPriceChecker()
+        elif choice == "4":
             print("Exiting...")
             break
 
 if __name__ == "__main__":
     _main_menu_()
+
