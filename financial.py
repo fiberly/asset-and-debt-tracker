@@ -10,68 +10,101 @@ try:
     import requests
 except Exception:
     requests = None
-
-
-
-
-
-
-## TODO: long term storage -> last saved price(s)?
+try: 
+    import json
+except Exception:
+    json = None
+try: 
+    import os
+except Exception:
+    os = None
+try: 
+    import re
+except Exception:
+    re = None
+try: 
+    import sys
+except Exception:
+    sys = None
+## TODO: last saved price(s)? shares owned still showing without internet?
 # TODO: GUI?
-# TODO: exit functionality from within menus
+# TODO: exit functionality from within menus: Remove menus needs and debt tracker
 # TODO: removing items with a number instead of writing out stocks has, crypto needs
 # TODO: Fix breaking out of loops in menus 
- # TODO: lower() for the exit words
  # TODO: ebay item lookup
  # TODO: Value over entry of input check, such as dollar amounts...
-# TODO: offline stock check error over printing information
 # TODO: First time use asset additions and debt additions
 # TODO: motivational moments within the app
 # TODO: Caching/saving the last loaded asset price
-
-
-
-# static setting of current holdings
-Stocks = {"AMZN": 1.0}
-crypto = {"pi-network": 1700.0}
-bullion = {"gold": 1.1, "silver": 16.0}
-cash = {"cash": 0.0}
-items = {"bicycle": 1000.0, "4090 Gigabyte": 2000.0}
-debt = {"Apple Card": 2144.00, "Venture One": 2501.00}
-
-
-
-
-
+# TODO: Charts? Chats?
+#TODO: different currency support
+# variable setting of current holdings
+Stocks = {}
+crypto = {}
+bullion = {}
+cash = {}
+items = {}
+debt = {}
+data_file = "data_save.json"
+def save_data():
+    data = {"stocks": Stocks, "crypto": crypto, "bullion": bullion, "cash": cash, "items": items, "debt": debt}
+    with open(data_file, "w") as f:
+        json.dump(data, f, indent=4)
+    print("Data saved successfully.")
+def load_data(): 
+    global Stocks, crypto, bullion, cash, items, debt
+    if os.path.exists(data_file): 
+        with open(data_file, "r") as f: 
+            data = json.load(f)
+            Stocks = data.get("stocks", {})
+            crypto = data.get("crypto", {})
+            bullion = data.get("bullion", {})
+            cash = data.get("cash", {})
+            items = data.get("items", {})
+            debt = data.get("debt", {})
+        print("Data loaded successfully.")
+    else: 
+        print("No save file found. Starting with a new file. ")
 # STOCK PRICE
 # gets price using the ticker symbol 
 def getPrice(ticker: str) -> float | None: 
     if yfinance is None: 
         return None
     try: 
+        if yfinance is None:
+            return None
+        null = None
+        original_stdout = None
+        original_stderr = None
+        if sys is not None and os is not None:
+            null = open(os.devnull, "w")
+            original_stdout, original_stderr = sys.stdout, sys.stderr
+            sys.stdout = null
+            sys.stderr = null
         tick = yfinance.Ticker(ticker)
         historyPrice = tick.history(period="1d")
-        if not historyPrice.empty:
+        if historyPrice is not None and not historyPrice.empty:
             return float(historyPrice["Close"].iloc[-1])
-        if hasattr(tick, 'fast_info') and "last_price" in tick.fast_info:
-            return float(tick.fast_info["last_price"])
-        information = tick.info
-        if "regularMarketPrice" in information:
+        if hasattr(tick, 'fast_info') and isinstance(tick.fast_info, dict):
+            lastValue = tick.fast_info.get("last_price")
+            if lastValue is not None:
+                return float(lastValue)
+        information = getattr(tick, "info", {}) or {}
+        if isinstance(information, dict) and information.get("regularMarketPrice") is not None: 
             return float(information["regularMarketPrice"])
     except Exception:
-        print(f"Error retrieving the price for {ticker}")
+        return None
+    finally: 
+        if sys is not None and null is not None:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+            null.close()
     return None
-
-
-
-
-
-
 # STOCK
 # takes the ticker symbol and and quantity and returns prices
 def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> dict[str, float]:
     section = (section or "totals").strip().lower()
-    show_stocks  = section in ("stocks", "stock", "a", "totals")    
+    show_stocks  = section in ("stocks", "stock", "1", "totals")    
     tickerANDAmounts = s.split(",")
     extraRemoved = [strippedParts.strip() for strippedParts in tickerANDAmounts]
     outputDictionary = {}
@@ -85,7 +118,7 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> dict[str, f
                 tickerPrice = getPrice(ticker)
                 if tickerPrice is None:
                     if not quiet:
-                        print(f"Could not retrieve price for ticker: {ticker}")
+                        print(f"Could not retrieve price for ticker: {ticker} with {quantity} share.")
                     continue
                 TotalValue = tickerPrice * quantity
                 subtotal += TotalValue
@@ -102,107 +135,188 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> dict[str, f
         if not quiet: 
             print(f"\nError retrieving data for ticker:", e)
     return subtotal
-
+def is_valid_ticker(ticker: str) -> bool:
+    ticker = (ticker or "").strip()
+    if not ticker or len(ticker) > 10:
+        return False
+    return ticker.isalpha()
 def add_stock_to_positions():
-    StockTicker = input("Enter stock ticker symbol, e.g. AAPL: ").strip().upper()
-    if not StockTicker:
-        print("Canceled")
-        return
-    try: 
-        quantityStock = float(input("Enter number of shares to add: "))
-    except ValueError:
-        print("Invalid Number Entered")
-        return
-    Stocks[StockTicker] = Stocks.get(StockTicker, 0.0) + max(0.0, quantityStock)
-    print(f"Updated [{StockTicker}], with {Stocks[StockTicker]} shares")
-
+    while True: 
+        StockTicker = input("Enter stock ticker symbol, e.g. AAPL or type exit to return to menu: ").strip().upper()
+        if StockTicker.lower() == "exit":
+            print("Exiting...")
+            break
+        if not StockTicker:
+            print("Canceled")
+            continue
+        if not is_valid_ticker(StockTicker):
+            print("Invalid ticker format, only letter A-Z and a-z allowed, no spaces or numbers. Please Try Again.")
+            continue
+        quantityInput = input("Enter number of shares to add or type exit to return to menu: ").strip()
+        if quantityInput.lower() == "exit":
+            print("Exiting...")
+            break
+        try: 
+            quantityStock = float(quantityInput)
+        except ValueError:
+            print("Invalid Number Entered")
+            continue
+        if quantityStock >= 9_999_999:
+            print("Number of shares can not exceed 9,999,999.")
+            continue
+        if quantityStock <= 0:
+            print("Please enter a non negative number.")
+            continue
+        tickerSymbol = StockTicker.upper()
+        Stocks[tickerSymbol] = Stocks.get(tickerSymbol, 0.0) + max(0.0, quantityStock)
+        print(f"Updated [{tickerSymbol}], with {Stocks[tickerSymbol]} shares")
+        save_data()
+        break
 def remove_stock_from_positions():
-    print("Stock List")
-    if not Stocks:
-        print("No stock position(s)")
-        return
-    keysSorted = sorted(Stocks.keys())
-    for number, key in enumerate(keysSorted, 1):
-        print(f"{number}, {key},  {Stocks[key]} shares")
-    StockTickerRemove = input("Enter stock ticker symbol, e.g. AAPL: ").strip().upper()
-    if not StockTickerRemove:
-        print("Cancelled")
-        return
-    ticker = None   
-    if StockTickerRemove.isdigit():
-        ids = int(StockTickerRemove)
-        if 1 <= ids <= len(keysSorted):
-            ticker = keysSorted[ids - 1]     
-    if ticker is None: 
-        ticker = StockTickerRemove.upper()
-    if ticker not in Stocks:
-        print("Please enter a stock from the list.")
-        return
-    try: 
-        quantityStock = float(input("Enter number of shares to remove: ").strip())
-    except ValueError:
-        print("Invalid Number Entered")
-        return
-    if quantityStock < 0:
-        print("Please enter a positive number.")
-        return
-    oldQuantity = float(Stocks.get(ticker, 0.0))
-    newQuantity = max(0.0, oldQuantity - quantityStock)
-    if newQuantity <= 1e-12:
-        del Stocks[ticker]
-        print(f"Removed {ticker}, 0 shares remaining.")
-    else: 
-        Stocks[ticker] = newQuantity
-        print(f"Updated {ticker}, {newQuantity} shares, (removed {quantityStock})")
-
-
-
-
-
-
+    while True: 
+        print("Stock List")
+        if not Stocks:
+            print("No stock position(s)")
+            return
+        keysSorted = sorted(Stocks.keys())
+        for number, key in enumerate(keysSorted, 1):
+            print(f"{number}) {key},  {Stocks[key]} shares")
+        StockTickerRemove = input("Enter stock ticker symbol, e.g. AAPL or exit to return to menu: ").strip().upper()
+        if StockTickerRemove.lower() == "exit":
+            print("Exiting...")
+            break
+        if not StockTickerRemove:
+            print("Cancelled")
+            return
+        ticker = None   
+        if StockTickerRemove.isdigit():
+            ids = int(StockTickerRemove)
+            if 1 <= ids <= len(keysSorted):
+                ticker = keysSorted[ids - 1]     
+        if ticker is None: 
+            ticker = StockTickerRemove.upper()
+        if ticker not in Stocks:
+            print("Please enter a stock from the list.")
+            return
+        quantityStock = input("Enter number of shares to remove or exit to return to menu: ").strip()
+        if quantityStock == "exit":
+            print("Exiting...")
+            break
+        try: 
+            quantityStocks = float(quantityStock)
+        except ValueError:
+            print("Invalid Number Entered")
+            return
+        if quantityStocks <= 0:
+            print("Please enter a positive number or non zero.")
+            return
+        oldQuantity = float(Stocks.get(ticker, 0.0))
+        newQuantity = max(0.0, oldQuantity - quantityStocks)
+        if newQuantity <= 1e-12:
+            del Stocks[ticker]
+            print(f"Removed {ticker}, 0 shares remaining.")
+            save_data()
+        else: 
+            Stocks[ticker] = newQuantity
+            print(f"Updated {ticker}, {newQuantity} shares, (removed {quantityStocks})")
+            save_data()
 # CRYPTO PRICE
 def showCrypto(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
-        show_crypto  = section in ("crypto", "cryptos", "b", "totals")  
-        if not crypto:
-            print("No crypto was/is saved.")
+        show_crypto = section in ("crypto", "cryptos", "2", "totals")  
+        
         if not show_crypto:
+            return 0.0
+        if not show_crypto:
+            if not quiet: 
+                print("No crypto was/is saved.")
             return 0.0
         if CoinGeckoAPI is None:
             if not quiet: 
-                print("Crypto Prices are unavailable right now")
+                print("CoinGecko is not available.")
             return 0.0
+        crypto_id = list(crypto.keys())
+        prices = {}
+        try: 
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError
+            coingGecko = CoinGeckoAPI()
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(coingGecko.get_price, ids=crypto_id, vs_currencies="usd")
+            try:
+                data = future.result(timeout=1) or {}
+            except TimeoutError:
+                try: 
+                    future.cancel()
+                except Exception:
+                    pass
+                executor.shutdown(wait=False)
+                if not quiet:
+                    print("")
+                data = {}
+            finally:
+                try: 
+                    executor.shutdown(wait=False)
+                except Exception:
+                    pass
+            for cryptoNames, CryptoQuantities in (data or {}).items():
+                if isinstance(CryptoQuantities, dict):
+                    prices[cryptoNames] = CryptoQuantities.get("usd")
+        except Exception:
+                if not quiet: 
+                    print("Crypto prices are unavailable right now.")
+                return 0.0
         subtotal = 0.0
-        coinGecko = CoinGeckoAPI()
         for cryptoName, quantityCrypto in crypto.items():
-            try: 
-                data = coinGecko.get_price(ids=[cryptoName], vs_currencies="usd")
-                price = data[cryptoName]["usd"]
-            except Exception:
-                price = None
+            information = data.get(cryptoName)
+            price = information.get("usd") if isinstance(information, dict) else None
             if price is None:
                 if not quiet: 
-                    print(f"Could not fetch price for {cryptoName}")
+                    print(f"Could not fetch price for {cryptoName} with {quantityCrypto} units.")
+                   ### LAST RECORDED PRICE HERE ###
                 continue
             CryptoWorth = quantityCrypto * price
             subtotal += CryptoWorth
             if not quiet: 
                 print(f"\n{cryptoName}: {quantityCrypto} at the current price ${price:.2f}, Total Value: ${CryptoWorth:.2f}")
         return subtotal
-
+def is_valid_coingeckoid(cid: str) -> bool:
+    cid = (cid or "").strip()
+    if not cid or len(cid) > 50:
+        return False
+    return bool(re.match(r'^[a-z\-]+$', cid))
 def add_crypto_to_positions():
-    coinGeckoID = input("Enter CoinGecko ID, e.g. bitcoin: ").strip()
-    if not coinGeckoID:
-        print("Canceled")
+    while True: 
+        coinGeckoID = input("Enter CoinGecko ID, e.g. bitcoin or type exit to return to menu: ").strip()
+        if coinGeckoID.lower() == "exit":
+            print("Exiting...")
+            break
+        if not coinGeckoID:
+            print("Canceled")
+            return
+        if not is_valid_coingeckoid(coinGeckoID):
+                print("Invalid ticker format, only letters a-z and - are allowed. Please Try Again.")
+                continue
+        quantityInput = input("Enter number of units to add or type exit to return to menu: ").strip()
+        if quantityInput.lower() == "exit":
+            print("Exiting...")
+            break
+        try: 
+            quantityCrypto = float(quantityInput)
+        except ValueError:
+            print("Invalid Number Entered")
+            return
+        if quantityCrypto >= 9_999_999:
+            print("Number of shares can not exceed 9,999,999.")
+            continue
+        if quantityCrypto <= 0:
+            print("Please enter a non negative number.")
+            continue
+        coingeckoIDKey = coinGeckoID.lower()
+        crypto[coingeckoIDKey] = crypto.get(coingeckoIDKey, 0.0) + max(0.0, quantityCrypto)
+        print(f"\nUpdated [{coingeckoIDKey}], with {crypto[coingeckoIDKey]} shares")
+        save_data()
         return
-    try: 
-        quantityCrypto = float(input("Enter number of units to add: "))
-    except ValueError:
-        print("Invalid Number Entered")
-        return
-    crypto[coinGeckoID] = crypto.get(coinGeckoID, 0.0) + max(0.0, quantityCrypto)
-    print(f"\nUpdated [{coinGeckoID}], with {crypto[coinGeckoID]} shares")
-
+    
 def remove_crypto_from_positions():
     if not crypto:
         print("No crypto position(s)")
@@ -224,10 +338,11 @@ def remove_crypto_from_positions():
     if newQuantityCrypto < 1e-12:
         del crypto[coinGeckoID]
         print(f"Removed {coinGeckoID}, 0 share(s)/unit(s) remaining")
+        save_data()
     else: 
         crypto[coinGeckoID] = newQuantityCrypto
         print(f"Updated {coinGeckoID} to {newQuantityCrypto}, (removed {quantityCrypto})")
-
+        save_data()
 
 
 
@@ -241,24 +356,30 @@ def showBullion(section="totals", quiet=False) -> float:
         try: 
             xau = requests.get(f"{url}/price/XAU", timeout=10).json()["price"]  # USD/oz
             xag = requests.get(f"{url}/price/XAG", timeout=10).json()["price"]
+            xpd = requests.get(f"{url}/price/XPD", timeout=10).json()["price"]
+            hg = requests.get(f"{url}/price/HG", timeout=10).json()["price"]
         except Exception as e:
-            xau = None
-            xag = None
+            xau = xag = xpd = hg = None
     else: 
-        xau = None
-        xag = None
+        xau = xag = xpd = hg = None
+
     section = (section or "totals").strip().lower()
-    show_bullion = section in ("bullion", "c", "totals")           
+    show_bullion = section in ("bullion", "3", "totals")           
     if not show_bullion: 
         return 0.0
     subtotal = 0.0
     try: 
         goldPrice = float(xau) if xau is not None else None
         silverPrice = float(xag) if xag is not None else None
+        palladiumPrice = float(xpd) if xpd is not None else None
+        copperPrice = float(hg) if hg is not None else None
     except NameError:
-        goldPrice = silverPrice = None
+        goldPrice = silverPrice = palladiumPrice = copperPrice = None
+        
     goldOunce = bullion.get("gold", 0.0)
     silverOunce = bullion.get("silver", 0.0)
+    palladiumOunce = bullion.get("palladium", 0.0)
+    copperOunce = bullion.get("copper", 0.0)
     if goldPrice is not None:
        # goldOunce = bullion.get("gold", 0.0)
         goldValue = goldOunce * goldPrice
@@ -269,68 +390,122 @@ def showBullion(section="totals", quiet=False) -> float:
         if not quiet:
             print(f"\nGold : {bullion.get('gold', 0.0)}oz @ N/A\n Total Gold Value N/A")
     if silverPrice is not None:
-        #silverOunce = bullion.get("silver", 0.0)
         silverValue = silverOunce * silverPrice
         subtotal += silverValue
         if not quiet: 
             print(f"\nSilver : {silverOunce} at ${silverPrice:.2f}\n Total Gold Value: ${silverValue:.2f}")
     else:
         if not quiet:
-            print(f"\nSilver : {bullion.get("silver", 0.0)} at N/A\n Total Gold Value: N/A")
-    
-    if goldPrice is None and silverPrice is None:
+            print(f"\nSilver : {bullion.get("silver", 0.0)} at N/A\n Total Silver Value: N/A")
+    if palladiumPrice is not None: 
+        palladiumValue = palladiumOunce * palladiumPrice
+        subtotal += palladiumValue
+        if not quiet: 
+            print(f"\nPalladium : {palladiumOunce} at ${palladiumPrice:.2f}\n Total Palladium Value: ${palladiumValue:.2f}")
+    else:
+        if not quiet:
+            print(f"\nPalladium : {bullion.get('palladium', 0.0)}oz @ N/A\n Total Palladium Value N/A")
+    if copperPrice is not None: 
+        copperValue = copperOunce * copperPrice
+        subtotal += copperValue
+        if not quiet: 
+            print(f"\nCopper : {copperOunce} at ${copperPrice:.2f}\n Total Copper Value: ${copperValue:.2f}")
+    else: 
+        if not quiet:
+            print(f"\nCopper : {bullion.get('copper', 0.0)}oz @ N/A\n Total Copper Value N/A")
+    if goldPrice and silverPrice and palladiumPrice and copperPrice is None: 
         if not quiet: 
             print("\nBullion prices are unavailable right now...\n")
+
+
+    
     return subtotal
 
 def add_bullion_to_positions():
-    bullionGoldORSilver = input("Enter metal [gold | silver]: ").strip().lower()
-    if bullionGoldORSilver in ("au", "xau"): bullionGoldORSilver = "gold"
-    if bullionGoldORSilver in ("ag", "xag"): bullionGoldORSilver = "silver"
-    if bullionGoldORSilver not in ("gold", "silver"):
-        print("Please enter either gold or silver...")
+    while True: 
+        bullionGoldORSilver = input("Enter metal [gold | silver | palladium | copper] or type exit to return to menu: ").strip().lower()
+        if bullionGoldORSilver == "exit": 
+            print("Exiting...")
+            return
+        if bullionGoldORSilver in ("au", "xau"): bullionGoldORSilver = "gold"
+        if bullionGoldORSilver in ("ag", "xag"): bullionGoldORSilver = "silver"
+        if bullionGoldORSilver in ("pd", "xpd"): bullionGoldORSilver = "palladium"
+        if bullionGoldORSilver in ("cu", "hg"): bullionGoldORSilver = "copper"
+        if bullionGoldORSilver not in ("gold", "silver", "palladium", "copper"):
+            print("Please enter either gold, silver, palladium or copper...")
+            return
+        metalOunce = input("Enter number of units to add or type exit to return to menu: ").strip()
+        if metalOunce == "exit":
+            print("Exiting...")
+            break
+        try: 
+            quantityBullion = float(metalOunce)
+        except ValueError:
+            print("Invalid Number Entered")
+            return
+        if quantityBullion <= 0:
+            print("Please enter a non negative number.")
+            continue
+        if quantityBullion >= 9_999:
+            print("Number of units can not exceed 9,999,999.")
+            continue
+        bullionKey = bullionGoldORSilver.lower()
+        bullion[bullionKey] = bullion.get(bullionKey, 0.0) + max(0.0, quantityBullion)
+        print(f"Updated [{bullionKey}], with {bullion[bullionKey]} ounces")
+        save_data()
         return
-    try: 
-        metalOunce = float(input("Enter number of units to add: ").strip())
-    except ValueError:
-        print("Invalid Number Entered")
-        return
-    bullion[bullionGoldORSilver] = bullion.get(bullionGoldORSilver, 0.0) + max(0.0, metalOunce)
-    print(f"Updated [{bullionGoldORSilver}], with {bullion[bullionGoldORSilver]} shares")
 
 def remove_bullion_from_positions():
-    print("Bullion Assets")
-    for name, quantity in bullion.items():
-        print(f"{name} : {quantity} oz(s)")
-    bullionGoldORSilver = input("Enter metal [gold | silver]: ").strip().lower()
-    if bullionGoldORSilver in ("au", "xau"): bullionGoldORSilver = "gold"
-    if bullionGoldORSilver in ("ag", "xag"): bullionGoldORSilver = "silver"
-    if bullionGoldORSilver not in ("gold", "silver"):
-        print("Please enter either gold or silver...")
+    if not bullion: 
+        print("No bullion position(s)")
         return
-    try: 
-        metalOunce = float(input("Enter number of units to remove: ").strip())
-    except ValueError:
-        print("Invalid Number Entered")
-        return
-    oldQuantityBullion = bullion.get(bullionGoldORSilver, 0.0)
-    newQuantityBullion = max(0.0, oldQuantityBullion - metalOunce)
-    if newQuantityBullion < 1e-12:
-        del crypto[bullionGoldORSilver]
-        print(f"Removed {bullionGoldORSilver}, 0 share(s)/unit(s) remaining")
-    else: 
-        bullion[bullionGoldORSilver] = newQuantityBullion
-        print(f"\nUpdated {bullionGoldORSilver} to {newQuantityBullion:.2f}, (removed {metalOunce})")
+    while True: 
+        print("Bullion Assets")
+        for name, quantity in bullion.items():
+            print(f"{name} : {quantity} oz(s)")
+        bullionGoldORSilver = input("Enter metal [gold | silver | palladium | copper] or exit to return to menu: ").strip().lower()
+        if bullionGoldORSilver == "exit":
+            break
+        if bullionGoldORSilver in ("au", "xau"): bullionGoldORSilver = "gold"
+        if bullionGoldORSilver in ("ag", "xag"): bullionGoldORSilver = "silver"
+        if bullionGoldORSilver in ("pd", "xpd"): bullionGoldORSilver = "palladium"
+        if bullionGoldORSilver in ("cu", "hg"): bullionGoldORSilver = "copper"
+        if bullionGoldORSilver not in ("gold", "silver", "palladium", "copper", "exit"):
+            print("Please enter either gold, silver, palladium or copper...")
+            continue
+        try: 
+            metalOunce = float(input("Enter number of ounces to remove or type exit to return to menu: ").strip())
+        except ValueError:
+            print("Invalid Number Entered")
+            continue
+        if metalOunce == "exit":
+            break
+        if metalOunce < 0: 
+            print("Please enter a non negative number.")
+            continue
+        if not bullionGoldORSilver or bullionGoldORSilver == "exit":
+            print("Exiting...")
+            continue
+        oldQuantityBullion = bullion.get(bullionGoldORSilver, 0.0)
+        newQuantityBullion = max(0.0, oldQuantityBullion - metalOunce)
+        if newQuantityBullion < 1e-12:
+            del bullion[bullionGoldORSilver]
+            print(f"Removed {bullionGoldORSilver}, 0 share(s)/unit(s) remaining")
+            save_data()
+        else: 
+            bullion[bullionGoldORSilver] = newQuantityBullion
+            print(f"\nUpdated {bullionGoldORSilver} to {newQuantityBullion:.2f}, (removed {metalOunce})")
+            save_data()
+        break
 
 
 
 
 
-
-# CASHSHOW
+# CASH SHOW
 def showCash(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
-        show_cash  = section in ("cash", "e", "totals") 
+        show_cash  = section in ("cash", "5", "totals") 
         if not cash: 
             print("Cash Available is $0") 
             return
@@ -348,22 +523,35 @@ def showCash(section="totals", quiet=False) -> float:
         return subtotal
 
 def add_cash_to_positions():
-    try: 
-        ask = input("Type and press enter a number:  1) to add dollars or cents, 2) Exit : ")
-    except ValueError:
-        print("Invalid Number Entered")
-        return
-    if ask == "1":
-        try: 
-            quantityCash = float(input("Enter number of dollars and or cents to add: "))
-        except ValueError:
-            print("Invalid Number Entered.")
+    while True: 
+
+        ask = input("Enter 1 to add dollars/cents or type exit to return to menu: ").strip().lower()
+        if ask == "exit":
+            print("Exiting...")
             return
-        cash["cash"] = cash.get("cash", 0.0) + max(0.0, quantityCash)
-        print(f"\nUpdated available cash, with {cash["cash"]:.2f} dollars")
-    if ask == "2":
-        print("Exiting...")
-        return
+        if ask != "1":
+            print("Please enter 1 to add cash or exit to return to menu.")
+        if ask == "1":
+            quantityCash = input("Enter number of dollars/cents to add or type exit to return to menu: ").strip()
+            if quantityCash.lower() == "exit":
+                print("Exiting...")
+                return
+            try:
+                quantityOfCash = float(quantityCash)
+            except ValueError:
+                print("Invalid Number Entered.")
+                continue
+            if quantityOfCash <= 0:
+                print("Number entered needs to be larger than 0.")
+                continue
+            if quantityOfCash > 9_999_999_999_999:
+                print("Entered amount can not exceed 9,999,999,999,999.")
+                continue
+            cash["cash"] = cash.get("cash", 0.0) + quantityOfCash
+            print(f"\nUpdated available cash, with {cash["cash"]:.2f} dollars")
+            save_data()
+            return
+    
 
 def remove_cash_from_position():
     print("\nRemoving Cash")
@@ -374,6 +562,7 @@ def remove_cash_from_position():
             oldBalance = cash["cash"]
             cash["cash"] = max(0.0, oldBalance - max(0.0, amount))
             print(f"{cash}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${cash["cash"]:,.2f}")
+            save_data()
         elif ask == "2":
             print("Exiting...")
         else: 
@@ -388,37 +577,54 @@ def remove_cash_from_position():
 # ITEMS SHOW
 def showItems(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
-        show_items  = section in ("items", "e", "totals")  
+        show_items  = section in ("items", "4", "totals")  
         if not show_items:
             return 0.0
         if not items:
             print("No items to remove..")
             return
         subtotal = 0.0
-        
         for itemName, amount in items.items():
             if amount is None: 
                 if not quiet: 
                     print(f"{itemName}: no dollar amount recorded")
                 continue
-            
             subtotal += amount
             if not quiet: 
                 print(f"{itemName}: ${amount}")
         return subtotal
 
 def add_item_to_positions():
-    itemAdd = input("Enter item name, e.g. mobile phone: ").strip()
-    if not itemAdd:
-        print("Canceled")
+    while True: 
+        itemAdd = input("Enter item name, e.g. mobile phone or type exit to return to menu: ").strip()
+        if itemAdd == "exit":
+            print("Exiting...")
+            return
+        if not itemAdd:
+            print("Canceled")
+            return
+        if len(itemAdd) > 50:
+            print("Length can not be longer than 50 characters.")
+            continue
+        priceOfItem = input("Enter price/worth of item to: ")
+        if priceOfItem.lower() == "exit":
+            print("Exiting...")
+            return
+        try:
+            itemPrice = float(priceOfItem)
+        except ValueError:
+            print("Invalid Number Entered")
+            continue
+        if itemPrice <= 0:
+            print("Please enter a number larger than 0.")
+            continue
+        if itemPrice > 9_999_999_999:
+            print("Entered price can not exceed 9,999,999,999.")
+            continue
+        items[itemAdd] = items.get(itemAdd, 0.0) + max(0.0, itemPrice)
+        print(f"\nUpdated [{itemAdd}], with ${items[itemAdd]}")
+        save_data()
         return
-    try: 
-        priceOfItem = float(input("Enter price/worth of item to: "))
-    except ValueError:
-        print("Invalid Number Entered")
-        return
-    items[itemAdd] = items.get(itemAdd, 0.0) + max(0.0, priceOfItem)
-    print(f"\nUpdated [{itemAdd}], with ${items[itemAdd]}")
 
 def remove_item_from_position():
     if not items:
@@ -452,6 +658,7 @@ def remove_item_from_position():
                 oldBalance = items[match]
                 items[match] = max(0.0, oldBalance - max(0.0, amount))
                 print(f"{match}: \nOld item price ${oldBalance:,.2f} \nNew item price ${items[match]:,.2f}")
+                save_data()
                 break
             except ValueError:
                     print("Exiting...")
@@ -469,6 +676,7 @@ def remove_item_from_position():
                 if matchItemRemoval: 
                     del items[matchItemRemoval]
                     print(f"\nRemoved {matchItemRemoval} from items")
+                    save_data()
                     return
                 else: 
                     print("Item Not Found")
@@ -517,6 +725,7 @@ def debtTracker():
                         debt[AccountMatch] = 0.0
                         print("--- Suggestion: Sign on for payment plans you can afford / manage. ---")
                         print(f"Created Account {AccountMatch},  Successfully!")
+                        save_data()
                         break
                     elif yorn in ("n"):
                         print("The account will not be added.")
@@ -534,6 +743,7 @@ def debtTracker():
                 debt[AccountMatch] = debt.get(AccountMatch, 0.0) + max(0.0, debtAddition)
                 print("\n--- Try not to leave unpaid balances at months end. ---")
                 print(f"Debt added: {AccountMatch}: ${debt[AccountMatch]:,.2f}")
+                save_data()
             except ValueError: 
                 print("Invalid input, please try again.")    
                 continue
@@ -541,8 +751,8 @@ def debtTracker():
              if not debt: 
                  print("\nNo debt accounts found")
                  continue
-             print("\nCurrent Debt Accounts:")
              print("--- Remember, the banks do not mind the monthly payment. ---")
+             print("\nCurrent Debt Accounts:")
              for name in debt.keys():
                  print(f"{name}")
              print("Type [exit] and press enter to return to the menu.")
@@ -570,6 +780,7 @@ def debtTracker():
              newBalance = max(0.0, oldBalance - amountCheck)
              debt[match] = newBalance
              print(f"{match}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${newBalance:,.2f}")
+             save_data()
         elif debtInput == "4":
             print("Type [exit] and press enter to return to the menu.")
             name = input("\nEnter the name of the debt account to remove: ").strip()
@@ -579,6 +790,7 @@ def debtTracker():
             if name in debt: 
                 del debt[name]
                 print(f"Removed {name} from debts")
+                save_data()
             else: 
                 print("Account Not Found")
             continue
@@ -594,13 +806,6 @@ def debtTracker():
 
 
 
-def itemPriceChecker():
-    print("item price check coming soon")
-    return
-
-
-
-
 
 # MAIN MENU
 def _main_menu_():
@@ -608,9 +813,8 @@ def _main_menu_():
         print("\nWelcome to the asset, debt and item price tracker!")
         print("1) positions")
         print("2) debt")
-        print("3) item price")
-        print("4) Exit")
-        choice = input("Enter a choice of 1, 2, 3 or 4: ")
+        print("3) Exit")
+        choice = input("Enter a choice of 1, 2 or 3: ")
         if choice == "1":
             while True: 
                 print("\nPositions")
@@ -682,7 +886,7 @@ def _main_menu_():
                     print("\nAdd/Update A Position")
                     print("  1) Stock")
                     print("  2) Crypto (CoinGecko ID)")
-                    print("  3) Bullion (gold|Silver)")
+                    print("  3) Bullion (gold|silver|palladium|copper)")
                     print("  4) Cash")
                     print("  5) Item")
                     print("  6) Exit")
@@ -709,7 +913,7 @@ def _main_menu_():
                     print("\nLower/Remove A Position")
                     print("  1) Stock")
                     print("  2) Crypto (CoinGecko ID)")
-                    print("  3) Bullion (gold|Silver)")
+                    print("  3) Bullion (gold|silver|palladium|copper)")
                     print("  4) Cash")
                     print("  5) Item")
                     print("  6) Exit")
@@ -731,11 +935,10 @@ def _main_menu_():
         elif choice == "2":
             debtTracker()
         elif choice == "3":
-            itemPriceChecker()
-        elif choice == "4":
             print("Exiting...")
             break
 
 if __name__ == "__main__":
+    load_data()
     _main_menu_()
 
