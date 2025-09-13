@@ -1,0 +1,12 @@
+{
+    "stocks": {},
+    "crypto": {},
+    "bullion": {
+        "copper": 5.0
+    },
+    "cash": {
+        "cash": 10.0
+    },
+    "items": {},
+    "debt": {}
+}

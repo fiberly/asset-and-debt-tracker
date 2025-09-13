@@ -26,9 +26,12 @@ try:
     import sys
 except Exception:
     sys = None
-## TODO: last saved price(s)?
+from typing import Any, Dict
+try:
+    from gpt4all import GPT4All
+except ImportError:
+    GPT4All = None  
 # TODO: GUI?
-# TODO: exit functionality from within menus: Remove menus needs and debt tracker
 # TODO: removing items with a number instead of writing out stocks has, crypto needs
 # TODO: Fix breaking out of loops in menus 
  # TODO: ebay item lookup
@@ -46,6 +49,11 @@ cash = {}
 items = {}
 debt = {}
 data_file = "data_save.json"
+LLM_ENABLED = True
+LLM_Model_Path = "models/qwen2.5-3b-instruct.Q4_0.gguf"
+LLM_Max_Tokens = 512
+LLM_Temperature = 0.2
+_gpt_ = None
 def save_data():
     data = {"stocks": Stocks, "crypto": crypto, "bullion": bullion, "cash": cash, "items": items, "debt": debt}
     with open(data_file, "w") as f:
@@ -569,34 +577,35 @@ def remove_bullion_from_positions():
         if bullionGoldORSilver not in ("gold", "silver", "palladium", "copper", "exit"):
             print("Please enter either gold, silver, palladium or copper...")
             continue
-
         try: 
             current_qty = float(bullion.get(bullionGoldORSilver, 0.0))
             print(f"{bullionGoldORSilver} : {current_qty} oz(s)")
                 # only outputting the selected bullion type and its quantity 
-            metalOunce = float(input("Enter number of ounces to remove or type exit to return to menu: ").strip())
         except ValueError:
             print("Invalid Number Entered")
             continue
-        if metalOunce == "exit":
-            break
-        if metalOunce < 0: 
-            print("Please enter a non negative number.")
-            continue
-        if not bullionGoldORSilver or bullionGoldORSilver == "exit":
+        metalOunce = input("Enter number of ounces to remove or type exit to return to menu: ").strip()
+        if metalOunce.lower() == "exit":
             print("Exiting...")
+            break
+        try: 
+            metalOunceFloat = float(metalOunce)
+        except ValueError:
+            print("Invalid Number Entered")
             continue
-        oldQuantityBullion = bullion.get(bullionGoldORSilver, 0.0)
-        newQuantityBullion = max(0.0, oldQuantityBullion - metalOunce)
-        if newQuantityBullion < 1e-12:
-            del bullion[bullionGoldORSilver]
-            print(f"Removed {bullionGoldORSilver}, 0 share(s)/unit(s) remaining")
+        if metalOunceFloat <= 0: 
+            print("Please enter a non negative number, non zero number.")
+            continue
+        if metalOunceFloat >= 9_999_999:
+            print("Maximum number that can be entered is 9,999,999.")
+            continue
+        changedNumber = safe_subtract_and_maybe_delete(bullion, bullionGoldORSilver, metalOunceFloat)
+        if changedNumber:
             save_data()
+            return
         else: 
-            bullion[bullionGoldORSilver] = newQuantityBullion
-            print(f"\nUpdated {bullionGoldORSilver} to {newQuantityBullion:.2f}, (removed {metalOunce})")
-            save_data()
-        break
+            print("No changes made.")
+            continue
 # CASH SHOW
 def showCash(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
@@ -645,22 +654,36 @@ def add_cash_to_positions():
             save_data()
             return
 def remove_cash_from_position():
-    print("\nRemoving Cash")
-    try: 
-        ask = input("Type and press enter a number:  1) to subtract from cash, 2) to Quit: ")
-        if ask == "1":
-            amount = float(input("Enter an amount to subtract as an whole number with up to two decimal places "))
-            oldBalance = cash["cash"]
-            cash["cash"] = max(0.0, oldBalance - max(0.0, amount))
-            print(f"{cash}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${cash["cash"]:,.2f}")
-            save_data()
-        elif ask == "2":
-            print("Exiting...")
-        else: 
-            print("Invalid Input.")
-    except ValueError:
-                print("Invalid Number, please enter something valid")
-# ITEMS SHOW
+    while True: 
+        print("\nRemoving Cash")
+        if not cash:
+            print("No cash to remove..")
+            return
+        for name, quantity in cash.items():
+            print(f"{name} available: ${quantity} dollars/cents")
+        try: 
+            ask = input("Type and press enter dollar and cent amount or exit to return to menu: ")
+            if ask == "1":
+                amount = float(input("Enter an amount to subtract as an whole number with up to two decimal places "))
+                if amount <= 0:
+                    print("Please enter a number larger than 0.")
+                    return
+                if amount > 9_999_999_999_999:
+                    print("Entered amount can not exceed 9,999,999,999,999.")
+                    return
+                oldBalance = cash["cash"]
+                cash["cash"] = max(0.0, oldBalance - max(0.0, amount))
+                print(f"{cash}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${cash["cash"]:,.2f}")
+                save_data()
+            elif ask == "exit":
+                print("Exiting...")
+                return
+            else: 
+                print("Invalid Input.")
+                continue
+        except ValueError:
+                    print("Invalid Number, please enter something valid")
+    # ITEMS SHOW
 def showItems(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
         show_items  = section in ("items", "4", "totals")  
@@ -714,56 +737,91 @@ def remove_item_from_position():
     if not items:
         print("No items to remove..")
         return
-    print("\nCurrent Item(s)")
-    for itemLoop in items.keys():
-        print(itemLoop)
-    print("\n")
-    print("Please enter: \n 1) Lower value of item\n 2) Remove item completely\n 3) Exit")
+    Max_Removal = 9_999_999_999
     while True: 
-        inputForDollarAmountRemoval = input("Select 1) Lower value of item, 2) Remove item completely or 3) Exit: ").strip()
-        if inputForDollarAmountRemoval == "3":
+        print("\nCurrent Item(s)")
+        for itemLoop, value in items.items():
+            print(f"{itemLoop}  ${value}")
+        print("\n")
+        print("Please enter: \n 1) Lower value of item\n 2) Remove item completely\n exit to return to menu")
+
+        inputForDollarAmountRemoval = input("Select 1, 2 or exit to return to menu: ").strip()
+        if inputForDollarAmountRemoval == "exit":
             print("Exiting...")
             break
         if inputForDollarAmountRemoval == "1":
+            print("\nItems List")
             for itemLoop in items.keys():
                 print(itemLoop)
-            itemSelection = input("Enter item name to lower dollar amount: ").strip()
-            if itemSelection == "3":
+            itemSelection = input("Enter item name to lower dollar amount or exit to return to menu: ").strip()
+            if itemSelection == "exit":
                 print("Exiting...")
                 break
-            if itemSelection not in items.keys():
-                print("Please enter an item from the list.")
-                return
             match = next((matches for matches in items if matches.lower() == itemSelection.lower()), None)
+            if not match:
+                print("Please enter an item from the list.")
+                continue
+            currentItem = float(items.get(match, 0.0))
+            print(f"Selection {match}, current value ${currentItem:,.2f}")
+            amount = input("\nEnter [exit] to return to menu.\nEnter an amount to subtract as  whole number with up to two decimal places\n e.g. 10.75, 10, 5.50, etc. ").strip()
+            if amount == "exit".strip().lower:
+                print("Exiting...")
+                return
             try: 
-                amount = float(input("\nEnter [EXIT] to exit.\nEnter an amount to subtract as  whole number with up to two decimal places\n e.g. 10.75, 10, 5.50, etc. ").strip())
-                if amount == "EXIT".strip().upper():
-                    return
-                oldBalance = items[match]
-                items[match] = max(0.0, oldBalance - max(0.0, amount))
-                print(f"{match}: \nOld item price ${oldBalance:,.2f} \nNew item price ${items[match]:,.2f}")
-                save_data()
-                break
+                amountWorth = float(amount)
             except ValueError:
-                    print("Exiting...")
-        else:
-            print("Enter a valid dollar amount.")
-            for itemLoop in items.keys():
-                print(itemLoop)
-            print("Enter the name exactly as shown under Current Item(s), or enter 3 to exit.")
-            if inputForDollarAmountRemoval == "2": 
-                itemRemoval = input("Enter an item name to remove: ").strip()
-                if itemRemoval == "3":
-                    print("Exiting...")
-                    break
-                matchItemRemoval = next((matches for matches in items if matches.lower() == itemRemoval.lower()), None)
-                if matchItemRemoval: 
-                    del items[matchItemRemoval]
-                    print(f"\nRemoved {matchItemRemoval} from items")
+                print("Invalid number entered.")
+                continue
+
+            if amountWorth <= 0:
+                print("Please enter a positive number larger than 0.")
+                continue
+            if amountWorth > Max_Removal:
+                print(f"Please enter a number less than {Max_Removal}.")
+                continue
+            
+            if amountWorth >= currentItem:
+                confirmation = input(f"Requested removal of ${amountWorth:,.2f}, that amount exceeds current item value of ${currentItem:,.2f}. Remove entire item (y/n): ").strip().lower()
+                if confirmation == "y":
+                    del items[match]
+                    print(f"Removed {match} from items")
                     save_data()
                     return
-                else: 
-                    print("Item Not Found")
+                else:
+                    print("Operation Cancelled.")
+                    continue
+
+            # subtraction code
+            oldBalance = currentItem
+            items[match] = max(0.0, oldBalance - amountWorth)
+            print(f"{match}: \nOld item price ${oldBalance:,.2f} \nNew item price ${items[match]:,.2f}")
+            save_data()
+            return
+        elif inputForDollarAmountRemoval == "2": 
+            for name in items.keys():
+                print(f"{name}")
+            #remove item completely
+            itemRemoval = input("Enter an item name to remove or exit to return to menu: ").strip()
+            if itemRemoval == "exit":
+                print("Exiting...")
+                break
+            matchItemRemoval = next((matches for matches in items if matches.lower() == itemRemoval.lower()), None)
+            if not matchItemRemoval:
+                print("Item not found.")
+                continue
+
+            confirmationRemoval = input(f"Are you sure you want to remove {matchItemRemoval} from items? (y/n): ").strip().lower()
+            if confirmationRemoval == "y": 
+                del items[matchItemRemoval]
+                print(f"\nRemoved {matchItemRemoval} from items")
+                save_data()
+                return
+            else: 
+                print("Item Not Found")
+                continue
+        else:
+            print("Please enter a valid choice of 1, 2 or exit to return to menu.")
+            continue
         break
 # DEBT TRACKER
 def debtTracker():
@@ -818,6 +876,12 @@ def debtTracker():
                 if debtAddition == "exit":
                     print("Exiting...")
                     continue
+                if debtAddition <= 0:
+                    print("Please enter a positive number larger than 0.")
+                    continue
+                if debtAddition > 9_999_999_999:
+                    print("The maximum number that can be entered is 9,999,999,999.")
+                    continue
                 debt[AccountMatch] = debt.get(AccountMatch, 0.0) + max(0.0, debtAddition)
                 print("\n--- Try not to leave unpaid balances at months end. ---")
                 print(f"Debt added: {AccountMatch}: ${debt[AccountMatch]:,.2f}")
@@ -831,8 +895,8 @@ def debtTracker():
                  continue
              print("--- Remember, the banks do not mind the monthly payment. ---")
              print("\nCurrent Debt Accounts:")
-             for name in debt.keys():
-                 print(f"{name}")
+             for name, value in debt.items():
+                 print(f"{name} : {value}")
              print("Type [exit] and press enter to return to the menu.")
              removeAmount = input("Enter the account name to subtract debt from: ").strip()
              match = next((matches for matches in debt if matches.lower() == removeAmount.lower()), None)
@@ -842,8 +906,8 @@ def debtTracker():
              if not match:
                 print("Account Not Found")
                 continue
-             amount = input("Enter an amount to subtract as a whole number with up to two decimal places: ").strip()
-             if amount == "quit":
+             amount = input("Enter an amount to subtract as a whole number with up to two decimal places \nType exit and press enter, to return to menu: ").strip()
+             if amount == "exit":
                 print("Exiting...")
                 continue    
              try: 
@@ -851,23 +915,32 @@ def debtTracker():
              except ValueError:
                  print("Invalid Number, please enter something valid")
                  continue
-             if amountCheck < 0:
-                print("Please enter a positive Number")
+             if amountCheck <= 0:
+                print("Please enter a positive or non zero number")
                 continue
-             oldBalance = debt[match]
-             newBalance = max(0.0, oldBalance - amountCheck)
-             debt[match] = newBalance
-             print(f"{match}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${newBalance:,.2f}")
-             save_data()
+             if amountCheck > 9_999_999_999:
+                print("The maximum number that can be entered is 9,999,999,999.")
+                continue
+             helperCall = safe_subtract_and_maybe_delete(debt, match, amountCheck)
+             if helperCall:
+                save_data()
+                continue
+             else: 
+                print("No changes made.")
+                continue
         elif debtInput == "4":
-            print("Type [exit] and press enter to return to the menu.")
-            name = input("\nEnter the name of the debt account to remove: ").strip()
+            if not debt:
+                print("No debt accounts found")
+                break
+            print("\nType [exit] and press enter to return to the menu.")
+            name = input("Enter the name of the debt account to remove: ").strip()
             if name.lower() == "exit":
                 print("Exiting...")
-                continue
-            if name in debt: 
-                del debt[name]
-                print(f"Removed {name} from debts")
+                return
+            matches = next((match for match in debt if match.lower() == name.lower()), None)
+            if matches:
+                del debt[matches]
+                print(f"Removed {matches} from debts")
                 save_data()
             else: 
                 print("Account Not Found")
@@ -879,7 +952,11 @@ def debtTracker():
             print("Please enter a valid choice")
             continue
 def chatBotMoneyAssistant():
-    print("AI Chat with money assistance/debt knowledge is on the way...")
+    print("CHAT BOT COMING SOON...")
+    return
+def budgeting():
+    print("BUDGETING COMING SOON...")
+    return
 # MAIN MENU
 def _main_menu_():
     while True: 
@@ -887,8 +964,9 @@ def _main_menu_():
         print("1) positions")
         print("2) debt")
         print("3) AI Chat (COMING SOON)")
-        print("4) Exit")
-        choice = input("Enter a choice of 1, 2, 3 or 4: ")
+        print("4) Budgeting (COMING SOON)")
+        print("5) Exit")
+        choice = input("Enter a choice of 1, 2, 3, 4 or 5: ")
         if choice == "1":
             while True: 
                 print("\nPositions")
@@ -1007,9 +1085,10 @@ def _main_menu_():
         elif choice == "3":
             chatBotMoneyAssistant()
         elif choice == "4":
+            budgeting()
+        elif choice == "5":
             print("Exiting...")
             break
 if __name__ == "__main__":
     load_data()
     _main_menu_()
-
