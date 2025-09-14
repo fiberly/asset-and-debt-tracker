@@ -1,11 +1,9 @@
 {
     "stocks": {},
     "crypto": {},
-    "bullion": {
-        "copper": 5.0
-    },
+    "bullion": {},
     "cash": {
-        "cash": 10.0
+        "cash": 0.0
     },
     "items": {},
     "debt": {}

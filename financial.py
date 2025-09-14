@@ -18,6 +18,9 @@ try:
     import os
 except Exception:
     os = None
+os.environ.setdefault("LLAMA_LOG_LEVEL", "ERROR")
+os.environ.setdefault("GGML_LOG_LEVEL",  "ERROR")
+os.environ.setdefault("GGML_METAL", "0")
 try: 
     import re
 except Exception:
@@ -27,10 +30,13 @@ try:
 except Exception:
     sys = None
 from typing import Any, Dict
-try:
-    from gpt4all import GPT4All
-except ImportError:
-    GPT4All = None  
+from LLM_Helper import ask_ai, ai_snapshot
+try: 
+    from importlib import import_module
+except Exception:
+    importlib = None
+    import_module = None
+
 # TODO: GUI?
 # TODO: removing items with a number instead of writing out stocks has, crypto needs
 # TODO: Fix breaking out of loops in menus 
@@ -49,11 +55,12 @@ cash = {}
 items = {}
 debt = {}
 data_file = "data_save.json"
-LLM_ENABLED = True
-LLM_Model_Path = "models/qwen2.5-3b-instruct.Q4_0.gguf"
-LLM_Max_Tokens = 512
-LLM_Temperature = 0.2
-_gpt_ = None
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")  
+MAX_TOKENS     = 512
+TEMPERATURE    = 0.2
+Llama   = None
+BACKEND = None
 def save_data():
     data = {"stocks": Stocks, "crypto": crypto, "bullion": bullion, "cash": cash, "items": items, "debt": debt}
     with open(data_file, "w") as f:
@@ -288,6 +295,10 @@ def remove_stock_from_positions():
             
 # CRYPTO PRICE
 def showCrypto(section="totals", quiet=False) -> float:
+        if not crypto:
+            if not quiet: 
+                print("No crypto position(s)")
+            return 0.0
         section = (section or "totals").strip().lower()
         show_crypto = section in ("crypto", "cryptos", "2", "totals")  
         
@@ -627,12 +638,12 @@ def showCash(section="totals", quiet=False) -> float:
         return subtotal
 def add_cash_to_positions():
     while True: 
-        ask = input("Enter 1 to add dollars/cents or type exit to return to menu: ").strip().lower()
+        ask = input("Enter 1) to add dollars/cents or type exit to return to menu: ").strip().lower()
         if ask == "exit":
             print("Exiting...")
             return
         if ask != "1":
-            print("Please enter 1 to add cash or exit to return to menu.")
+            print("Enter 1) to add cash or exit to return to menu.")
         if ask == "1":
             quantityCash = input("Enter number of dollars/cents to add or type exit to return to menu: ").strip()
             if quantityCash.lower() == "exit":
@@ -662,7 +673,7 @@ def remove_cash_from_position():
         for name, quantity in cash.items():
             print(f"{name} available: ${quantity} dollars/cents")
         try: 
-            ask = input("Type and press enter dollar and cent amount or exit to return to menu: ")
+            ask = input("Enter 1) for entry of dollar and cent amount or type exit to return to menu: ")
             if ask == "1":
                 amount = float(input("Enter an amount to subtract as an whole number with up to two decimal places "))
                 if amount <= 0:
@@ -673,8 +684,9 @@ def remove_cash_from_position():
                     return
                 oldBalance = cash["cash"]
                 cash["cash"] = max(0.0, oldBalance - max(0.0, amount))
-                print(f"{cash}: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${cash["cash"]:,.2f}")
+                print(f"cash: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${cash["cash"]:,.2f}")
                 save_data()
+                return
             elif ask == "exit":
                 print("Exiting...")
                 return
@@ -952,18 +964,28 @@ def debtTracker():
             print("Please enter a valid choice")
             continue
 def chatBotMoneyAssistant():
-    print("CHAT BOT COMING SOON...")
-    return
+    if not ask_ai:
+        print("AI assistant not available.")
+    else:
+        print("\n Entering AI Chatbot type exit and press enter, to return to menu.")
+        while True:
+            question = input("Ask A Question or type exit and press enter to return to menu: ").strip()
+            if question.lower() == "exit":
+                print("Exiting...")
+                break
+            answer = ask_ai(question, stocks=Stocks, crypto=crypto, bullion=bullion, cash=cash, items=items, debt=debt)
+            print(f"AI Answer: \n{answer}")
+
 def budgeting():
     print("BUDGETING COMING SOON...")
     return
 # MAIN MENU
 def _main_menu_():
     while True: 
-        print("\nWelcome to the asset and debt tracker!")
+        print("\nWelcome to the Asset, Debt and Budget Tracker")
         print("1) positions")
         print("2) debt")
-        print("3) AI Chat (COMING SOON)")
+        print("3) AI Chat")
         print("4) Budgeting (COMING SOON)")
         print("5) Exit")
         choice = input("Enter a choice of 1, 2, 3, 4 or 5: ")
@@ -973,14 +995,14 @@ def _main_menu_():
                 print("  1) Stocks")
                 print("  2) Crypto")
                 print("  3) Bullion")
-                print("  4) Totals")
-                print("  5) Cash ")
-                print("  6) Items")
+                print("  4) Cash ")
+                print("  5) Items")
+                print("  6) Totals")
                 print("  7) Add/Update Position")
                 print("  8) Remove/Delete Position")
                 print("  9) Exit")
                 entry = input("Choose 1/2/3/4/5/6/7/8 or 9: ").strip().lower()
-                section = {"1": "stocks", "2": "crypto", "3": "bullion", "4": "totals", "5": "cash", "6": "items", "7": "add", "8": "remove", "9": "exit"}
+                section = {"1": "stocks", "2": "crypto", "3": "bullion", "6": "totals", "4": "cash", "5": "items", "7": "add", "8": "remove", "9": "exit"}
                 if entry in ("9", "exit"):
                     break 
                 if entry not in section:
@@ -994,7 +1016,7 @@ def _main_menu_():
                     showCrypto(section="crypto")
                 elif section in ("bullion", "3"):
                     showBullion(section="bullion")
-                elif section in ("4", "totals"):
+                elif section in ("6", "totals"):
                     print("\n Totals:  ")
                     stockTotal = parse_positions(section="stocks", quiet=True) or 0.0
                     print(f"\nStock Dollar Total: \n ${stockTotal:,.2f}")
@@ -1024,10 +1046,10 @@ def _main_menu_():
                     TotalAssetSubtraction = GrandTotals - debtTotal
                     print(f"\nTotals after Stock, Cryptocurrency, Bullion, Cash and Item(s) minus the debt accounts \n ${TotalAssetSubtraction:,.2f}")
                     print("\n")
-                elif section in ("5", "cash"):
+                elif section in ("4", "cash"):
                     print("\nCash")
                     showCash(section="cash", quiet=False)
-                elif section in ("6", "items"):
+                elif section in ("5", "items"):
                     print("\nItem(s)")
                     showItems(section="items", quiet=False)
                 elif section in ("7", "add"):
@@ -1091,4 +1113,4 @@ def _main_menu_():
             break
 if __name__ == "__main__":
     load_data()
-    _main_menu_()
+    _main_menu_() 
