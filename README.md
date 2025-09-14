@@ -1,7 +1,14 @@
 # asset-and-debt-tracker
 This is a python program that allows the tracking of assets. Such as stocks, crypto, bullion, cash and items. Along with the tracking of debt usage. 
 
-Persistence
-- Data is saved to `asset_data.json` in the project directory.
-- The app auto-loads saved data on start and writes after any change.
-- You can back up the file or copy it between machines as needed.
+# FUNCTIONALITY:
+# ASSETS:
+Stock, Cryptocurrency, Bullion, Cash and Items
+# ADDING:
+Allows the adding of the above topics to the program dictionary
+# REMOVING:
+Allows the removal of added entries in the program
+# DEBT TRACKER: 
+Track debt, ability to add and remove
+# AI CHATBOT
+Ask questions regarding your assets/debt and get input on next moves or improvement.
