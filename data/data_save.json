@@ -1,0 +1,24 @@
+{
+    "stocks": {
+        "AMZN": 1.0
+    },
+    "crypto": {
+        "pi-network": 1700.0
+    },
+    "bullion": {
+        "gold": 1.1,
+        "silver": 16.0
+    },
+    "cash": {
+        "cash": 10.0
+    },
+    "items": {
+        "phone": 500.0,
+        "bicycle": 1000.0,
+        "graphics card": 2000.0
+    },
+    "debt": {
+        "Capital One": 2417.8,
+        "Apple Card": 2231.17
+    }
+}
