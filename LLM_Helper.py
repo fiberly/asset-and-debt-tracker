@@ -146,6 +146,7 @@ _system_prompt = ("You are a helpful offline financial assistant.\n"
     "- Never mention that you are an AI model.\n"
     "- Never fabricate conversations or roleplay."
     "- You can not have conversations with the user.\n"
+    "- Ensure there are no incorrect spellings.\n"
     )   
 
 def ask_ai(question: str, *, stocks: Dict[str, Any], crypto: Dict[str, Any], bullion: Dict[str, Any], cash: Dict[str, Any], items: Dict[str, Any], debt: Dict[str, Any]) -> str:

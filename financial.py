@@ -47,6 +47,7 @@ except Exception:
 # TODO: Caching/saving the last loaded asset price
 # TODO: Charts? Chats?
 #TODO: different currency support
+#TODO: Fix ChatBot
 # variable setting of current holdings
 Stocks = {}
 crypto = {}
@@ -54,18 +55,17 @@ bullion = {}
 cash = {}
 items = {}
 debt = {}
-data_file = "data_save.json"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+data_file = os.path.join(BASE_DIR, "data", "data_save.json")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")  
-MAX_TOKENS     = 512
-TEMPERATURE    = 0.2
+MAX_TOKENS = 512
+TEMPERATURE = 0.2
 Llama   = None
 BACKEND = None
 def save_data():
     data = {"stocks": Stocks, "crypto": crypto, "bullion": bullion, "cash": cash, "items": items, "debt": debt}
     with open(data_file, "w") as f:
         json.dump(data, f, indent=4)
-    print("Data saved successfully.")
 def load_data(): 
     global Stocks, crypto, bullion, cash, items, debt
     if os.path.exists(data_file): 
@@ -162,6 +162,7 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> dict[str, f
                     if section in ("stocks", "stock", "1", "totals"):
                         if not quiet:
                             print(f"\n{ticker}: {quantity} shares at ${tickerPrice:.2f} each, Total Value: ${TotalValue:.2f}")
+                            save_data()
                 if section not in ("stocks", "stock", "1", "totals"):
                     print("Invalid Input")
         if not Stocks:
@@ -363,9 +364,6 @@ def is_valid_coingeckoid(cid: str) -> bool:
     return bool(re.match(r'^[a-z\-]+$', cid))
 def add_crypto_to_positions():
     while True: 
-        if not crypto:
-            print("No crypto position(s)")
-            return
         print("Current Crypto Positions: ")
         keysSorted = sorted(crypto.keys())
         for name, keys in enumerate(keysSorted, 1):
@@ -977,8 +975,70 @@ def chatBotMoneyAssistant():
             print(f"AI Answer: \n{answer}")
 
 def budgeting():
-    print("BUDGETING COMING SOON...")
-    return
+    while True:
+        print("\nWelcome to Budgeting")
+        initial_input = input("Type and press enter \n1) Show Budget \n2) Add Budget \n3) Lower Budget \n4) Spending Budget Tracker \n5) Over or Under Budget \nor exit to return to menu: ").strip()
+        if initial_input == "exit":
+            print("Exiting...")
+            return
+        if initial_input == "1":
+            print("Budget: ")
+            # budget shown here
+            continue
+        elif initial_input == "2":
+            # add to budget here
+            print("How much would you like to add?")
+            continue
+        elif initial_input == "3":
+            # lower budget here
+            print("How much would you like to subtract?")
+            continue
+        if initial_input == "4":
+            while True: 
+                print("\nSpending Budget Tracker")
+                secondInput = input("Type and press enter: \n1) Food \n2) Entertainment \n3) Housing \n4) Utilities \n5) Clothing \nor exit to return to menu: ").strip()
+                if secondInput == "1":
+                    print("Food Selected")
+                    #show food values saved
+                    #add food
+                    # lower food
+                    continue
+                if secondInput == "2":
+                    print("Entertainment Selected")
+                    #show entertainment values saved
+                    #add entertainment
+                    # lower entertainment
+                    continue
+                if secondInput == "3":
+                    print("Housing Selected")
+                    #show housing values saved
+                    #add housing
+                    # lower housing
+                    continue
+                if secondInput == "4":
+                    print("Utilities Selected")
+                    #show utilities values saved
+                    #add utilities
+                    # lower utilities
+                    continue
+                if secondInput == "5":
+                    print("Clothing Selected")
+                    #show clothing values saved
+                    #add clothing
+                    # lower clothing
+                    continue
+                if secondInput == "exit":
+                    print("Exiting...")
+                    return
+        if initial_input == "5":
+            print("Over or Under Budget")
+            # show the totals for the sections, 
+            # show subtraction in regards to the budged, 
+            # show over or under budget
+            continue
+        return
+        
+    
 # MAIN MENU
 def _main_menu_():
     while True: 
@@ -986,7 +1046,7 @@ def _main_menu_():
         print("1) positions")
         print("2) debt")
         print("3) AI Chat")
-        print("4) Budgeting (COMING SOON)")
+        print("4) Budgeting ((COMING SOON))")
         print("5) Exit")
         choice = input("Enter a choice of 1, 2, 3, 4 or 5: ")
         if choice == "1":
