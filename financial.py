@@ -48,6 +48,7 @@ except Exception:
 # TODO: Charts? Chats?
 #TODO: different currency support
 #TODO: Fix ChatBot
+#TODO: ticker for crypto
 # variable setting of current holdings
 Stocks = {}
 crypto = {}
@@ -71,12 +72,18 @@ def load_data():
     if os.path.exists(data_file): 
         with open(data_file, "r") as f: 
             data = json.load(f)
-            Stocks = data.get("stocks", {})
-            crypto = data.get("crypto", {})
-            bullion = data.get("bullion", {})
-            cash = data.get("cash", {})
-            items = data.get("items", {})
-            debt = data.get("debt", {})
+            Stocks.clear()
+            Stocks.update(data.get("stocks", {}))
+            crypto.clear()
+            crypto.update(data.get("crypto", {}))
+            bullion.clear()
+            bullion.update(data.get("bullion", {}))
+            cash.clear()
+            cash.update(data.get("cash", {}))
+            items.clear()
+            items.update(data.get("items", {}))
+            debt.clear()
+            debt.update(data.get("debt", {}))
         print("Data loaded successfully.")
     else: 
         print("No save file found. Starting with a new file. ")
@@ -294,6 +301,27 @@ def remove_stock_from_positions():
             save_data()
             return
             
+def getGUICryptoPrices(ids, quiet=False):
+    if CoinGeckoAPI is None:
+        if not quiet:
+            print("CoinGecko is not available.")
+        return {}
+    valid_ids = [cid for cid in ids if isinstance(cid, str) and cid]
+    if not valid_ids:
+        return {}
+    try:
+        data = CoinGeckoAPI().get_price(ids=valid_ids, vs_currencies="usd") or {}
+    except Exception:
+        if not quiet:
+            print("Crypto prices are unavailable right now.")
+        return {}
+    prices = {}
+    for cid in valid_ids:
+        usd = data.get(cid)
+        if isinstance(usd, dict) and isinstance(usd.get("usd"), (int, float)):
+            prices[cid] = float(usd["usd"])
+    return prices
+
 # CRYPTO PRICE
 def showCrypto(section="totals", quiet=False) -> float:
         if not crypto:
@@ -462,6 +490,26 @@ def remove_crypto_from_positions():
         print("No changes made.")
     return
 #BULLION PRICE
+def get_GUI_bullion_prices() -> dict[str, float | None]:
+    url = "https://api.gold-api.com"
+    symbols = {
+        "gold": "XAU",
+        "silver": "XAG",
+        "palladium": "XPD",
+        "copper": "HG",
+    }
+    if requests is None:
+        return {}
+
+    prices: dict[str, float | None] = {}
+    for metal, code in symbols.items():
+        try:
+            response = requests.get(f"{url}/price/{code}", timeout=10)
+            response.raise_for_status()
+            prices[metal] = float(response.json().get("price"))
+        except Exception:
+            prices[metal] = None
+    return prices
 def showBullion(section="totals", quiet=False) -> float:
     url = "https://api.gold-api.com"
     if requests is not None: 
