@@ -21,99 +21,65 @@ from financial import (
     CoinGeckoAPI,
     safe_subtract_and_maybe_delete,
     ask_ai, 
-
 )
-
 # --- GUI Application ---
-
 class AssetTrackerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Asset, Debt and Budget Tracker")
         self.geometry("900x450")
-
         load_data()
-
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(pady=10, padx=10, fill="both", expand=True)
-
         self.stocks_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.stocks_frame, text="Stocks")
-
-        # Add placeholder tabs
-        
         self.crypto_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.crypto_frame, text="Crypto")
-
         self.bullion_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.bullion_frame, text="Bullion")
-
         self.cash_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.cash_frame, text="Cash")
-        
         self.items_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.items_frame, text="Item(s)")
-        
         self.debt_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.debt_frame, text="Debt")
-
         self.budget_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.budget_frame, text="Budget")
-        
-        #self.ai_frame = ttk.Frame(self.notebook)
-        #self.notebook.add(self.ai_frame, text="AI Chat")
-
-
         self.create_stocks_tab()
         self.create_crypto_tab()
         self.create_bullion_tab()
         self.create_cash_tab()
         self.create_item_tab()
         self.create_debt_tab()
-        #self.create_ai_tab()
-
-
-
-
     def create_stocks_tab(self):
         controls_frame = ttk.LabelFrame(self.stocks_frame, text="Manage Stocks")
         controls_frame.pack(fill="x", padx=10, pady=5)
-
         ttk.Label(controls_frame, text="Ticker:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.stock_ticker_entry = ttk.Entry(controls_frame)
         self.stock_ticker_entry.grid(row=0, column=1, padx=5, pady=5)
-
         ttk.Label(controls_frame, text="Quantity:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
         self.stock_quantity_entry = ttk.Entry(controls_frame)
         self.stock_quantity_entry.grid(row=0, column=3, padx=5, pady=5)
-
         add_button = ttk.Button(controls_frame, text="Add Stock", command=self.add_stock)
         add_button.grid(row=0, column=4, padx=10, pady=5)
-
         self.stocks_tree = ttk.Treeview(self.stocks_frame, columns=("Ticker", "Quantity", "Price", "Value"), show="headings")
         self.stocks_tree.heading("Ticker", text="Ticker")
         self.stocks_tree.heading("Quantity", text="Quantity")
         self.stocks_tree.heading("Price", text="Price")
         self.stocks_tree.heading("Value", text="Value")
         self.stocks_tree.pack(fill="both", expand=True, padx=10, pady=5)
-
         tree_buttons_frame = ttk.Frame(self.stocks_frame)
         tree_buttons_frame.pack(fill="x", padx=10, pady=5)
-
         refresh_button = ttk.Button(tree_buttons_frame, text="Refresh Prices", command=self.refresh_stocks)
         refresh_button.pack(side="left", padx=5)
         if yfinance is None:
             refresh_button.config(state="disabled")
-
         remove_button = ttk.Button(tree_buttons_frame, text="Remove Selected", command=self.remove_stock)
         remove_button.pack(side="left", padx=5)
-
         self.refresh_stocks()
-
     def refresh_stocks(self):
         for item in self.stocks_tree.get_children():
             self.stocks_tree.delete(item)
-
         for ticker, quantity in sorted(Stocks.items()):
             price = getPrice(ticker)
             if price is not None:
