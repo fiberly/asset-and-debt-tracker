@@ -37,7 +37,8 @@ except Exception:
     importlib = None
     import_module = None
 
-# TODO: GUI?
+#TODO profit loss area?
+# TODO: Helper info for coingecko ids
 # TODO: removing items with a number instead of writing out stocks has, crypto needs
 # TODO: Fix breaking out of loops in menus 
  # TODO: ebay item lookup
@@ -58,7 +59,7 @@ items = {}
 debt = {}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 data_file = os.path.join(BASE_DIR, "data", "data_save.json")
-MODEL_PATH = os.path.join(BASE_DIR, "models", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")  
+MODEL_PATH = os.path.join(BASE_DIR, "models", "qwen2.5-0.5b-instruct-q2_k.gguf")  
 MAX_TOKENS = 512
 TEMPERATURE = 0.2
 Llama   = None
@@ -684,6 +685,19 @@ def showCash(section="totals", quiet=False) -> float:
         return subtotal
 def add_cash_to_positions():
     while True: 
+        print("Current Cash Positions: ")
+        for account, quantity in cash.items():
+            print(f"{account}: ${quantity}")
+        cashAdd = input("Enter cash account name, e.g. savings account or type exit to return to menu: ").strip()
+        if cashAdd == "exit":
+            print("Exiting...")
+            return
+        if not cashAdd:
+            print("Canceled")
+            return
+        if len(cashAdd) > 50:
+            print("Length can not be longer than 50 characters.")
+            continue
         ask = input("Enter 1) to add dollars/cents or type exit to return to menu: ").strip().lower()
         if ask == "exit":
             print("Exiting...")
@@ -706,41 +720,118 @@ def add_cash_to_positions():
             if quantityOfCash > 9_999_999_999_999:
                 print("Entered amount can not exceed 9,999,999,999,999.")
                 continue
-            cash["cash"] = cash.get("cash", 0.0) + quantityOfCash
-            print(f"\nUpdated available cash, with {cash["cash"]:.2f} dollars")
+            cash[cashAdd] = cash.get(cashAdd, 0.0) + max(0.0, quantityOfCash)
+            print(f"\nUpdated [{cashAdd}], with ${cash[cashAdd]}")
+          #  cash["cash"] = cash.get("cash", 0.0) + quantityOfCash
+           # print(f"\nUpdated available cash, with {cash["cash"]:.2f} dollars")
             save_data()
             return
 def remove_cash_from_position():
+    Max_Removal = 9_999_999_999_999
     while True: 
-        print("\nRemoving Cash")
         if not cash:
-            print("No cash to remove..")
+            print("No cash position(s)")
             return
-        for name, quantity in cash.items():
-            print(f"{name} available: ${quantity} dollars/cents")
-        try: 
-            ask = input("Enter 1) for entry of dollar and cent amount or type exit to return to menu: ")
-            if ask == "1":
-                amount = float(input("Enter an amount to subtract as an whole number with up to two decimal places "))
-                if amount <= 0:
-                    print("Please enter a number larger than 0.")
+        print("\nCurrent Cash Account(s)")
+        for cashAccount, quantity in cash.items():
+            print(f"{cashAccount}  ${quantity}")
+        print("Please enter: \n 1) Lower value of cash account\n 2) Remove account completely\n exit to return to menu")
+
+        inputForDollarCashRemoval = input("Select 1, 2 or exit to return to menu: ").strip()
+        if inputForDollarCashRemoval.lower() == "exit":
+            print("Exiting...")
+            break
+        if inputForDollarCashRemoval == "1":
+                print("\nItems List")
+                for cashAccount in cash.keys():
+                    print(cashAccount)
+                accountSelection = input("Enter account name to lower dollar amount or exit to return to menu: ").strip()
+                if accountSelection == "exit":
+                    print("Exiting...")
+                    break
+                match = next((matches for matches in cash if matches.lower() == accountSelection.lower()), None)
+                if not match:
+                    print("Please enter an account from the list.")
+                    continue
+                currentAccount = float(cash.get(match, 0.0))
+                print(f"Selection {match}, current value ${currentAccount:,.2f}")
+                amount = input("\nEnter [exit] to return to menu.\nEnter an amount to subtract as  whole number with up to two decimal places\n e.g. 10.75, 10, 5.50, etc. ").strip()
+                if amount == "exit".strip().lower:
+                    print("Exiting...")
                     return
-                if amount > 9_999_999_999_999:
-                    print("Entered amount can not exceed 9,999,999,999,999.")
-                    return
-                oldBalance = cash["cash"]
-                cash["cash"] = max(0.0, oldBalance - max(0.0, amount))
-                print(f"cash: \nOld Balance ${oldBalance:,.2f} \nNew Balance ${cash["cash"]:,.2f}")
+                try: 
+                    accountWorth = float(amount)
+                except ValueError:
+                    print("Invalid number entered.")
+                    continue
+
+                if accountWorth <= 0:
+                    print("Please enter a positive number larger than 0.")
+                    continue
+                if accountWorth > Max_Removal:
+                    print(f"Please enter a number less than {Max_Removal}.")
+                    continue
+                
+                if accountWorth >= currentAccount:
+                    confirmation = input(f"Requested removal of ${accountWorth:,.2f}, that amount exceeds current account value of ${currentAccount:,.2f}. Remove entire account (y/n): ").strip().lower()
+                    if confirmation == "y":
+                        del cash[match]
+                        print(f"Removed {match} from accounts")
+                        save_data()
+                        return
+                    else:
+                        print("Operation Cancelled.")
+                        continue
+
+                # subtraction code
+                oldBalance = currentAccount
+                cash[match] = max(0.0, oldBalance - accountWorth)
+                print(f"{match}: \nOld account value ${oldBalance:,.2f} \nNew account value ${cash[match]:,.2f}")
                 save_data()
                 return
-            elif ask == "exit":
-                print("Exiting...")
-                return
-            else: 
-                print("Invalid Input.")
+        elif inputForDollarCashRemoval == "2": 
+                for name in cash.keys():
+                    print(f"{name}")
+                #remove item completely
+                cashAccountRemoval = input("Enter an account name to remove or exit to return to menu: ").strip()
+                if cashAccountRemoval == "exit":
+                    print("Exiting...")
+                    break
+                matchItemRemoval = next((matches for matches in cash if matches.lower() == cashAccountRemoval.lower()), None)
+                if not matchItemRemoval:
+                    print("Item not found.")
+                    continue
+
+                confirmationRemoval = input(f"Are you sure you want to remove {matchItemRemoval} from accounts? (y/n): ").strip().lower()
+                if confirmationRemoval == "y": 
+                    del cash[matchItemRemoval]
+                    print(f"\nRemoved {matchItemRemoval} from accounts")
+                    save_data()
+                    return
+                else: 
+                    print("Item Not Found")
+                    continue
+        else:
+                print("Please enter a valid choice of 1, 2 or exit to return to menu.")
                 continue
-        except ValueError:
-                    print("Invalid Number, please enter something valid")
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
     # ITEMS SHOW
 def showItems(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
@@ -1019,7 +1110,29 @@ def chatBotMoneyAssistant():
             if question.lower() == "exit":
                 print("Exiting...")
                 break
-            answer = ask_ai(question, stocks=Stocks, crypto=crypto, bullion=bullion, cash=cash, items=items, debt=debt)
+
+            # Prepare data with prices for the AI
+            priced_stocks = {}
+            for ticker, quantity in Stocks.items():
+                price = getPrice(ticker)
+                priced_stocks[ticker] = {"quantity": quantity, "last_price": price or 0.0}
+
+            priced_crypto = {}
+            if crypto:
+                prices = getGUICryptoPrices(list(crypto.keys()), quiet=True)
+                for cid, quantity in crypto.items():
+                    priced_crypto[cid] = {"quantity": quantity, "last_price": prices.get(cid, 0.0)}
+
+            priced_bullion = {}
+            if bullion:
+                prices = get_GUI_bullion_prices()
+                for metal, quantity in bullion.items():
+                    priced_bullion[metal] = {"quantity": quantity, "last_price": prices.get(metal) or 0.0}
+
+            answer = ask_ai(
+                question, stocks=priced_stocks, crypto=priced_crypto, 
+                bullion=priced_bullion, cash=cash, items=items, debt=debt
+            )
             print(f"AI Answer: \n{answer}")
 
 def budgeting():
