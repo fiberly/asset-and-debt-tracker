@@ -36,20 +36,6 @@ try:
 except Exception:
     importlib = None
     import_module = None
-
-#TODO profit loss area?
-# TODO: Helper info for coingecko ids
-# TODO: removing items with a number instead of writing out stocks has, crypto needs
-# TODO: Fix breaking out of loops in menus 
- # TODO: ebay item lookup
- # TODO: Value over entry of input check, such as dollar amounts...
-# TODO: First time use asset additions and debt additions
-# TODO: motivational moments within the app "You can think, do I really need this? Can I afford this right now?"
-# TODO: Caching/saving the last loaded asset price
-# TODO: Charts? Chats?
-#TODO: different currency support
-#TODO: Fix ChatBot
-#TODO: ticker for crypto
 # variable setting of current holdings
 Stocks = {}
 crypto = {}

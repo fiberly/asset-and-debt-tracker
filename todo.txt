@@ -1,0 +1,13 @@
+TOP PRIORITY: 
+#TODO profit loss area?
+# TODO: Helper info for coingecko ids
+# TODO: Caching/saving the last loaded asset price
+# TODO: removing items with a number instead of writing out stocks has, crypto needs, bullion, cash, item, debt needs
+
+LOWER PRIORITY: 
+ # TODO: ebay item lookup
+# TODO: First time use asset additions and debt additions
+# TODO: motivational moments within the app "You can think, do I really need this? Can I afford this right now?"
+# TODO: Charts? Chats?
+#TODO: different currency support
+#TODO: ticker for crypto
