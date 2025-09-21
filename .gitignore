@@ -5,3 +5,4 @@ __pycache__/financial.cpython-312.pyc
 __pycache__/LLM_Helper.cpython-312.pyc
 models/.DS_Store
 models/qwen2.5-0.5b-instruct-q2_k.gguf
+__pycache__
