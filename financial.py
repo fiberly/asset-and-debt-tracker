@@ -1,4 +1,9 @@
 try: 
+    import certifi
+    os.environ["SSL_CERT_FILE"] = certifi.where()
+except Exception:
+    pass
+try: 
     import yfinance
 except Exception:
     yfinance = None
@@ -30,12 +35,22 @@ try:
 except Exception:
     sys = None
 from typing import Any, Dict
-from LLM_Helper import ask_ai, ai_snapshot
+try: 
+    from LLM_Helper import ask_ai, ai_snapshot
+    AIAvailable = True
+except Exception:
+    LLM_Helper = None
+    AIAvailable = False
+    def ask_ai(question: str, **kwargs):
+        return "AI feature not available in this build."
+    def ai_snapshot(*args, **kwargs):
+        return {}
 try: 
     from importlib import import_module
 except Exception:
     importlib = None
     import_module = None
+import platform
 # variable setting of current holdings
 Stocks = {}
 crypto = {}
@@ -43,34 +58,91 @@ bullion = {}
 cash = {}
 items = {}
 debt = {}
+budget = { 
+    "total": 0.0,
+    "food": 0.0,
+    "entertainment": 0.0,
+    "housing": 0.0,
+    "utilities": 0.0,
+    "clothing": 0.0
+}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 data_file = os.path.join(BASE_DIR, "data", "data_save.json")
+APP_NAME = "Asset and Debt Tracker"
+def _user_data_dir():
+    sysname = platform.system()
+    if sysname == "Darwin":
+        base = os.path.expanduser(f"~/Library/Application Support")
+    elif sysname == "Windows":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~\\AppData\\Roaming")
+    else:
+        base = os.path.expanduser(f"~/.local/share")
+    return os.path.join(base, APP_NAME)
+                                                               
+if getattr(sys, "frozen", False):
+    userDirectory = os.path.join(_user_data_dir(), "data")
+    os.makedirs(userDirectory, exist_ok=True)
+    data_file = os.path.join(userDirectory, "data_save.json")
+
+
+
+
 MODEL_PATH = os.path.join(BASE_DIR, "models", "qwen2.5-0.5b-instruct-q2_k.gguf")  
 MAX_TOKENS = 512
 TEMPERATURE = 0.2
 Llama   = None
 BACKEND = None
 def save_data():
-    data = {"stocks": Stocks, "crypto": crypto, "bullion": bullion, "cash": cash, "items": items, "debt": debt}
+    data = {"stocks": Stocks, "crypto": crypto, "bullion": bullion, "cash": cash, "items": items, "debt": debt, "budget": budget}
     with open(data_file, "w") as f:
         json.dump(data, f, indent=4)
 def load_data(): 
-    global Stocks, crypto, bullion, cash, items, debt
+    global Stocks, crypto, bullion, cash, items, debt, budget
     if os.path.exists(data_file): 
         with open(data_file, "r") as f: 
             data = json.load(f)
             Stocks.clear()
-            Stocks.update(data.get("stocks", {}))
+            stocks_raw = data.get("stocks", {})
+            normalized_stocks = {}
+            for ticker, payload in stocks_raw.items():
+                if isinstance(payload, dict) and "cost_basis" in payload:
+                    # Handles the correct cost_basis format
+                    normalized_stocks[ticker] = { "shares": float(payload.get("shares", 0.0)), "cost_basis": float(payload.get("cost_basis", 0.0)), }
+                else:
+                    # Fallback for older formats or incomplete data
+                    normalized_stocks[ticker] = { "shares": float(payload), "cost_basis": 0.0 }
+            Stocks.update(normalized_stocks)
+
             crypto.clear()
-            crypto.update(data.get("crypto", {}))
+            crypto_raw = data.get("crypto", {})
+            normalized_crypto = {}
+            for cid, payload in crypto_raw.items():
+                if isinstance(payload, dict) and "cost_basis" in payload:
+                    # Handles the correct cost_basis format
+                    normalized_crypto[cid] = { "units": float(payload.get("units", 0.0)), "cost_basis": float(payload.get("cost_basis", 0.0)), }
+                else:
+                    # Fallback for older formats (just quantity)
+                    normalized_crypto[cid] = { "units": float(payload), "cost_basis": 0.0 }
+            crypto.update(normalized_crypto)
             bullion.clear()
-            bullion.update(data.get("bullion", {}))
+            bullion_raw = data.get("bullion", {})
+            normalized_bullion = {}
+            for metal, payload in bullion_raw.items():
+                if isinstance(payload, dict) and "cost_basis" in payload:
+                    # Handles the correct cost_basis format
+                    normalized_bullion[metal] = { "units": float(payload.get("units", 0.0)), "cost_basis": float(payload.get("cost_basis", 0.0)), }
+                else:
+                    # Fallback for older formats (just quantity)
+                    normalized_bullion[metal] = { "units": float(payload), "cost_basis": 0.0 }
+            bullion.update(normalized_bullion)
             cash.clear()
             cash.update(data.get("cash", {}))
             items.clear()
             items.update(data.get("items", {}))
             debt.clear()
             debt.update(data.get("debt", {}))
+            budget.clear()
+            budget.update(data.get("budget", {}))
         print("Data loaded successfully.")
     else: 
         print("No save file found. Starting with a new file. ")
@@ -95,6 +167,12 @@ def safe_subtract_and_maybe_delete(dictionaryList: dict, item: str, quantity: fl
     dictionaryList[item] = current - quantity
     print(f"Updated {item}: {dictionaryList[item]} (removed {quantity})")
     return True
+
+def profit_loss_stock():
+    #stockProfit = 
+   # stockLoss = 
+   pass
+
 # STOCK PRICE
 # gets price using the ticker symbol 
 def getPrice(ticker: str) -> float | None: 
@@ -132,36 +210,39 @@ def getPrice(ticker: str) -> float | None:
     return None
 # STOCK
 # takes the ticker symbol and and quantity and returns prices
-def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> dict[str, float]:
+def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> float:
     section = (section or "totals").strip().lower()
     show_stocks  = section in ("stocks", "stock", "1", "totals")    
     tickerANDAmounts = s.split(",")
     extraRemoved = [strippedParts.strip() for strippedParts in tickerANDAmounts]
     outputDictionary = {}
     for splitParts in extraRemoved: 
-        ticker, quantity = splitParts.split(":", 1)
-        outputDictionary[ticker] = float(quantity)
+        ticker, position_data = splitParts.split(":", 1)
+        outputDictionary[ticker] = float(position_data)
     subtotal = 0.0
     try:   
         if show_stocks: 
-            for ticker, quantity in Stocks.items():
+            if not Stocks:
+                if not quiet: print("No stock(s) in positions.")
+                return 0.0
+            for ticker, position_data in Stocks.items():
+                shares = position_data["shares"] if isinstance(position_data, dict) else float(position_data)
+                cost_basis = position_data.get("cost_basis", 0.0) if isinstance(position_data, dict) else 0.0
+                avg_buy_price = (cost_basis / shares) if shares > 0 else 0.0
                 tickerPrice = getPrice(ticker)
                 if tickerPrice is None:
                     if not quiet:
-                        print(f"Could not retrieve price for ticker: {ticker} with {quantity} share.")
+                        print(f"Could not retrieve price for ticker: {ticker} with {shares} share(s).")
                     continue
-                TotalValue = tickerPrice * quantity
+                TotalValue = tickerPrice * shares
                 subtotal += TotalValue
                 if show_stocks: 
                     if section in ("stocks", "stock", "1", "totals"):
                         if not quiet:
-                            print(f"\n{ticker}: {quantity} shares at ${tickerPrice:.2f} each, Total Value: ${TotalValue:.2f}")
-                            save_data()
-                if section not in ("stocks", "stock", "1", "totals"):
-                    print("Invalid Input")
-        if not Stocks:
-            print("No stock(s) in positions.")
-            return
+                            current_value = tickerPrice * shares
+                            profit_loss = current_value - cost_basis
+                            pnl_string = f"P/L: ${profit_loss:,.2f}"
+                            print(f"\n{ticker}: {shares} shares @ avg buy price of ${avg_buy_price:,.2f}. Total Purchase(s) Cost: ${cost_basis:,.2f}\nCurrent Stock Price: ${tickerPrice:,.2f} | Current Stock Total: ${current_value:,.2f} | ({pnl_string})")
     except Exception as e:
         if not quiet: 
             print(f"\nError retrieving data for ticker:", e)
@@ -189,7 +270,6 @@ def add_stock_to_positions():
             continue
 
         quantityInput = input("Enter number of shares to add or type exit to return to menu: ").strip()
-        2
         if quantityInput.lower() == "exit":
             print("Exiting...")
             break
@@ -204,9 +284,34 @@ def add_stock_to_positions():
         if quantityStock <= 0:
             print("Please enter a non negative number.")
             continue
+        buyInStockInput = input("Enter price that you bought the stock at or type exit to return to menu: ").strip()
+        if buyInStockInput.lower() == "exit":
+            print("Exiting...")
+            break
+        try: 
+            priceWhenPurchased = float(buyInStockInput)
+        except ValueError:
+            print("Invalid Number Entered")
+            continue
+        if priceWhenPurchased >= 9_999_999:
+            print("Number of shares can not exceed 9,999,999.")
+            continue
+        if quantityStock <= 0:
+            print("Please enter a non negative number.")
+            continue
+
         tickerSymbol = StockTicker.upper()
-        Stocks[tickerSymbol] = Stocks.get(tickerSymbol, 0.0) + max(0.0, quantityStock)
-        print(f"Updated [{tickerSymbol}], with {Stocks[tickerSymbol]} shares")
+        stockPosition = Stocks.get(tickerSymbol, {"shares": 0.0, "cost_basis": 0.0})
+
+        current_shares = float(stockPosition.get("shares", 0.0))
+        current_cost_basis = float(stockPosition.get("cost_basis", 0.0))
+
+        stockPosition["shares"] = current_shares + quantityStock # This was duplicated, removing one
+        stockPosition["cost_basis"] = current_cost_basis + (quantityStock * priceWhenPurchased)
+
+        Stocks[tickerSymbol] = stockPosition
+        new_avg_price = (stockPosition['cost_basis'] / stockPosition['shares']) if stockPosition['shares'] > 0 else 0.0
+        print(f"Updated [{tickerSymbol}], now holding {stockPosition['shares']} shares. New average price is ${new_avg_price:,.2f}/share.")
         save_data()
         break
 def remove_stock_from_positions():
@@ -214,7 +319,7 @@ def remove_stock_from_positions():
         print("Stock List")
         if not Stocks:
             print("No stock position(s)")
-            return
+            break
         keysSorted = sorted(Stocks.keys())
         for number, key in enumerate(keysSorted, 1):
             print(f"{number}) {key},  {Stocks[key]} shares")
@@ -241,7 +346,9 @@ def remove_stock_from_positions():
         # ask user for number of shares to remove
 
         # takes the old quantity before any removal, current quantity, and prints 
-        oldQuantity = float(Stocks.get(ticker, 0.0))
+       # oldQuantity = float(Stocks.get(ticker, 0.0))
+        dictGrab = Stocks.get(ticker, {"shares": 0.0, "cost_basis": 0.0})
+        oldQuantity = float(dictGrab.get("shares", 0.0))
         print(f"Current holdings for {ticker}: {oldQuantity} shares")
         
         # checks for user input
@@ -260,10 +367,10 @@ def remove_stock_from_positions():
         # checks for input maximum and minimum
         if quantityStocks <= 0:
             print("Please enter a positive number or non zero.")
-            return
+            continue
         if quantityStocks >= 9_999_999:
             print("The maximum number that can be entered is 9,999,999.")
-            return
+            continue
         
         if quantityStocks > oldQuantity:
             print(f"Requested removal of {quantityStocks} shares, that amount exceeds current holdings of {oldQuantity}.")
@@ -272,21 +379,26 @@ def remove_stock_from_positions():
                 del Stocks[ticker]
                 print(f"Removed {ticker}, 0 shares remaining.")
                 save_data()
-                return
+                continue
             else: 
                 print("Exiting...")
                 continue
+        
+        # Reduce cost basis proportionally
+        old_cost_basis = dictGrab.get("cost_basis", 0.0)
+        cost_basis_to_remove = (old_cost_basis / oldQuantity) * quantityStocks if oldQuantity > 0 else 0
+
         newQuantity = max(0.0, oldQuantity - quantityStocks)
         if newQuantity <= 1e-12:
             del Stocks[ticker]
             print(f"Removed {ticker}, 0 shares remaining.")
-            save_data()
-            return
         else: 
-            Stocks[ticker] = newQuantity
+            dictGrab["shares"] = newQuantity
+            dictGrab["cost_basis"] = max(0.0, old_cost_basis - cost_basis_to_remove)
+            Stocks[ticker] = dictGrab
             print(f"Updated {ticker}, {newQuantity} shares, (removed {quantityStocks})")
-            save_data()
-            return
+        save_data()
+        return
             
 def getGUICryptoPrices(ids, quiet=False):
     if CoinGeckoAPI is None:
@@ -303,18 +415,18 @@ def getGUICryptoPrices(ids, quiet=False):
             print("Crypto prices are unavailable right now.")
         return {}
     prices = {}
-    for cid in valid_ids:
-        usd = data.get(cid)
-        if isinstance(usd, dict) and isinstance(usd.get("usd"), (int, float)):
-            prices[cid] = float(usd["usd"])
-    return prices
+    for cid_key in valid_ids:
+        price_data = data.get(cid_key)
+        if isinstance(price_data, dict) and isinstance(price_data.get("usd"), (int, float)):
+            prices[cid_key] = float(price_data["usd"])
+    return prices 
 
 # CRYPTO PRICE
 def showCrypto(section="totals", quiet=False) -> float:
         if not crypto:
             if not quiet: 
                 print("No crypto position(s)")
-            return 0.0
+            return
         section = (section or "totals").strip().lower()
         show_crypto = section in ("crypto", "cryptos", "2", "totals")  
         
@@ -359,18 +471,24 @@ def showCrypto(section="totals", quiet=False) -> float:
                     print("Crypto prices are unavailable right now.")
                 return 0.0
         subtotal = 0.0
-        for cryptoName, quantityCrypto in crypto.items():
-            information = data.get(cryptoName)
-            price = information.get("usd") if isinstance(information, dict) else None
+        for cid, position_data in crypto.items():
+            units = position_data.get("units", 0.0) if isinstance(position_data, dict) else float(position_data)
+            cost_basis = position_data.get("cost_basis", 0.0) if isinstance(position_data, dict) else 0.0
+            avg_buy_price = (cost_basis / units) if units > 0 else 0.0
+            
+            price_info = data.get(cid)
+            price = price_info.get("usd") if isinstance(price_info, dict) else None
             if price is None:
                 if not quiet: 
-                    print(f"Could not fetch price for {cryptoName} with {quantityCrypto} units.")
-                   ### LAST RECORDED PRICE HERE ###
+                    print(f"Could not fetch price for {cid} with {units} units.")
                 continue
-            CryptoWorth = quantityCrypto * price
+            current_value = units * price
+            profitLoss = current_value - cost_basis
+            profitLoss_string = f"P/L: ${profitLoss:,.2f}"
+            CryptoWorth = units * price
             subtotal += CryptoWorth
             if not quiet: 
-                print(f"\n{cryptoName}: {quantityCrypto} at the current price ${price:.2f}, Total Value: ${CryptoWorth:.2f}")
+                print(f"\n{cid}: {units} units @ avg buy price of ${avg_buy_price:,.2f}. Total Purchase(s) Cost: ${cost_basis:,.2f}\nCurrent Crypto Price: ${price:,.2f}, Current Value: ${current_value:,.2f} | ({profitLoss_string})")
         return subtotal
 def is_valid_coingeckoid(cid: str) -> bool:
     cid = (cid or "").strip()
@@ -393,9 +511,6 @@ def add_crypto_to_positions():
         if not is_valid_coingeckoid(coinGeckoID):
                 print("Invalid ticker format, only letters a-z and - are allowed. Please Try Again.")
                 continue
-        keysSorted = sorted(crypto.keys())
-        for number, name in enumerate(keysSorted, 1):
-            print(f"{name} : {crypto.get(name, 0.0)} unit(s)")
         quantityInput = input("Enter number of units to add or type exit to return to menu: ").strip()
            # get current crypto holdings and print the selected crypto with the number of held units
               #  print(f"Current holding for {quantityInput}) {currentQuantityCrypto} unit(s).")
@@ -413,9 +528,30 @@ def add_crypto_to_positions():
         if quantityCrypto <= 0:
             print("Please enter a non negative number.")
             continue
+        
+        buyInCryptoInput = input("Enter price that you bought the crypto at or type exit to return to menu: ").strip()
+        if buyInCryptoInput.lower() == "exit":
+            print("Exiting...")
+            break
+        try:
+            priceWhenPurchased = float(buyInCryptoInput)
+        except ValueError:
+            print("Invalid Number Entered")
+            continue
+        if priceWhenPurchased <= 0:
+            print("Please enter a non-negative number.")
+            continue
+        if priceWhenPurchased >= 9_999_999_999:
+            print("Please enter a number leass than 9_999_999_999")
+            continue
+        
         coingeckoIDKey = coinGeckoID.lower()
-        crypto[coingeckoIDKey] = crypto.get(coingeckoIDKey, 0.0) + max(0.0, quantityCrypto)
-        print(f"\nUpdated [{coingeckoIDKey}], with {crypto[coingeckoIDKey]} shares")
+        position = crypto.get(coingeckoIDKey, {"units": 0.0, "cost_basis": 0.0})
+        position["units"] += quantityCrypto
+        position["cost_basis"] += quantityCrypto * priceWhenPurchased
+        crypto[coingeckoIDKey] = position
+        new_avg_price = (position['cost_basis'] / position['units']) if position['units'] > 0 else 0.0
+        print(f"\nUpdated [{coingeckoIDKey}], now holding {position['units']} units. New average price is ${new_avg_price:,.2f}/unit.")
         save_data()
         return
 def remove_crypto_from_positions():
@@ -427,7 +563,8 @@ def remove_crypto_from_positions():
     print("Current Crypto Positions: ")
     keysSorted = sorted(crypto.keys())
     for name, keys in enumerate(keysSorted, 1):
-        print(f"{name} : {keys} unit(s)/share(s)")
+        units = keys.get("units") if isinstance(keys, dict) else keys
+        print(f"{name}) {units} unit(s)/share(s)")
     # input for the coingeckoid 
     coinGeckoID = input("Enter CoinGecko ID, e.g. bitcoin or exit to return to menu: ").strip()
 
@@ -455,8 +592,9 @@ def remove_crypto_from_positions():
         return
     
     # get current crypto holdings and print the selected crypto with the number of held units
-    currentQuantityCrypto = float(crypto.get(selected_ID, 0.0))
-    print(f"Current holding for {selected_ID}) {currentQuantityCrypto} unit(s).")
+    position = crypto.get(selected_ID, {"units": 0.0, "cost_basis": 0.0})
+    current_units = float(position.get("units", 0.0))
+    print(f"Current holding for {selected_ID}: {current_units} unit(s).")
 
     # Get removal amount with exit choice optional
     quantityCrypto = input("Enter number of units to remove or exit to return to menu: ").strip()
@@ -464,17 +602,28 @@ def remove_crypto_from_positions():
         print("Exiting...")
         return
     try: 
-        # convert the QuantityCrypto into a float from a string
-        quantityCryptos = float(quantityCrypto)        
+        units_to_remove = float(quantityCrypto)        
     except ValueError:
         print("Invalid Number Entered")
         return
-    # use helper that asks for confirmation if removing a holding
-    changed = safe_subtract_and_maybe_delete(crypto, selected_ID, quantityCryptos)
-    if changed:
-        save_data()
-    else: 
-        print("No changes made.")
+    
+    if units_to_remove <= 0:
+        print("Enter a positive removal amount.")
+        return
+
+    if units_to_remove >= current_units:
+        del crypto[selected_ID]
+        print(f"Removed {selected_ID}.")
+    else:
+        old_cost_basis = position.get("cost_basis", 0.0)
+        cost_basis_to_remove = (old_cost_basis / current_units) * units_to_remove if current_units > 0 else 0
+        
+        position["units"] = current_units - units_to_remove
+        position["cost_basis"] = max(0.0, old_cost_basis - cost_basis_to_remove)
+        crypto[selected_ID] = position
+        print(f"Updated {selected_ID}, {position['units']} units remaining.")
+
+    save_data()
     return
 #BULLION PRICE
 def get_GUI_bullion_prices() -> dict[str, float | None]:
@@ -498,6 +647,10 @@ def get_GUI_bullion_prices() -> dict[str, float | None]:
             prices[metal] = None
     return prices
 def showBullion(section="totals", quiet=False) -> float:
+    if not bullion:
+            if not quiet: 
+                print("No bullion position(s)")
+                return
     url = "https://api.gold-api.com"
     if requests is not None: 
         try: 
@@ -514,55 +667,32 @@ def showBullion(section="totals", quiet=False) -> float:
     if not show_bullion: 
         return 0.0
     subtotal = 0.0
-    try: 
-        goldPrice = float(xau) if xau is not None else None
-        silverPrice = float(xag) if xag is not None else None
-        palladiumPrice = float(xpd) if xpd is not None else None
-        copperPrice = float(hg) if hg is not None else None
-    except NameError:
-        goldPrice = silverPrice = palladiumPrice = copperPrice = None
-    goldOunce = bullion.get("gold", 0.0)
-    silverOunce = bullion.get("silver", 0.0)
-    palladiumOunce = bullion.get("palladium", 0.0)
-    copperOunce = bullion.get("copper", 0.0)
-    if goldPrice is not None:
-       # goldOunce = bullion.get("gold", 0.0)
-        goldValue = goldOunce * goldPrice
-        subtotal += goldValue
-        if not quiet: 
-            print(f"\nGold : {goldOunce} at ${goldPrice:.2f}\n Total Gold Value: ${goldValue:.2f}")
-    else: 
-        if not quiet:
-            print(f"\nGold : {bullion.get('gold', 0.0)}oz @ N/A\n Total Gold Value N/A")
-    if silverPrice is not None:
-        silverValue = silverOunce * silverPrice
-        subtotal += silverValue
-        if not quiet: 
-            print(f"\nSilver : {silverOunce} at ${silverPrice:.2f}\n Total Gold Value: ${silverValue:.2f}")
-    else:
-        if not quiet:
-            print(f"\nSilver : {bullion.get("silver", 0.0)} at N/A\n Total Silver Value: N/A")
-    if palladiumPrice is not None: 
-        palladiumValue = palladiumOunce * palladiumPrice
-        subtotal += palladiumValue
-        if not quiet: 
-            print(f"\nPalladium : {palladiumOunce} at ${palladiumPrice:.2f}\n Total Palladium Value: ${palladiumValue:.2f}")
-    else:
-        if not quiet:
-            print(f"\nPalladium : {bullion.get('palladium', 0.0)}oz @ N/A\n Total Palladium Value N/A")
-    if copperPrice is not None: 
-        copperValue = copperOunce * copperPrice
-        subtotal += copperValue
-        if not quiet: 
-            print(f"\nCopper : {copperOunce} at ${copperPrice:.2f}\n Total Copper Value: ${copperValue:.2f}")
-    else: 
-        if not quiet:
-            print(f"\nCopper : {bullion.get('copper', 0.0)}oz @ N/A\n Total Copper Value N/A")
-    if goldPrice and silverPrice and palladiumPrice and copperPrice is None: 
+    
+    prices = get_GUI_bullion_prices()
+    if not prices:
         if not quiet: 
             print("\nBullion prices are unavailable right now...\n")
+        return 0.0
+
+    for metal, position_data in bullion.items():
+        units = position_data.get("units", 0.0)
+        cost_basis = position_data.get("cost_basis", 0.0)
+        avg_buy_price = (cost_basis / units) if units > 0 else 0.0
+        price = prices.get(metal)
+
+        if price is None:
+            if not quiet: print(f"Could not fetch price for {metal} with {units} units.")
+            continue
+
+        current_value = units * price
+        profit_loss = current_value - cost_basis
+        pnl_string = f"P/L: ${profit_loss:,.2f}"
+        subtotal += current_value
+        if not quiet:
+            print(f"\n{metal.capitalize()}: {units} units @ avg buy price of ${avg_buy_price:,.2f}. Total Purchase(s) Cost: ${cost_basis:,.2f}\nCurrent Price: ${price:,.2f}, Current Value: ${current_value:,.2f} | ({pnl_string})")
     return subtotal
 def add_bullion_to_positions():
+    
     while True: 
         print("Current Bullion Positions: ")
         keysSorted = sorted(bullion.keys())
@@ -580,9 +710,10 @@ def add_bullion_to_positions():
         if bullionGoldORSilver not in ("gold", "silver", "palladium", "copper"):
             print("Please enter either gold, silver, palladium or copper...")
             return
+        
         keysSorted = sorted(bullion.keys())
-        for number, name in enumerate(keysSorted, 1):
-            print(f"{name} : {bullion.get(name, 0.0)} unit(s)")
+        # for number, name in enumerate(keysSorted, 1):
+        #     print(f"{name} : {bullion.get(name, 0.0)} unit(s)")
         metalOunce = input("Enter number of units to add or type exit to return to menu: ").strip()
         if metalOunce == "exit":
             print("Exiting...")
@@ -598,9 +729,27 @@ def add_bullion_to_positions():
         if quantityBullion >= 9_999:
             print("Number of units can not exceed 9,999,999.")
             continue
+
+        buy_in_price_input = input("Enter price that you bought the bullion at or type exit to return to menu: ").strip()
+        if buy_in_price_input.lower() == "exit":
+            print("Exiting...")
+            break
+        try:
+            price_when_purchased = float(buy_in_price_input)
+        except ValueError:
+            print("Invalid Number Entered")
+            continue
+        if price_when_purchased <= 0:
+            print("Please enter a non-negative number.")
+            continue
+
         bullionKey = bullionGoldORSilver.lower()
-        bullion[bullionKey] = bullion.get(bullionKey, 0.0) + max(0.0, quantityBullion)
-        print(f"Updated [{bullionKey}], with {bullion[bullionKey]} ounces")
+        position = bullion.get(bullionKey, {"units": 0.0, "cost_basis": 0.0})
+        position["units"] += quantityBullion
+        position["cost_basis"] += quantityBullion * price_when_purchased
+        bullion[bullionKey] = position
+        new_avg_price = (position['cost_basis'] / position['units']) if position['units'] > 0 else 0.0
+        print(f"Updated [{bullionKey}], now holding {position['units']} units. New average price is ${new_avg_price:,.2f}/unit.")
         save_data()
         return
 def remove_bullion_from_positions():
@@ -610,7 +759,8 @@ def remove_bullion_from_positions():
     while True: 
         print("Bullion Assets")
         for name, quantity in bullion.items():
-            print(f"{name}")
+            units = quantity.get("units", 0.0) if isinstance(quantity, dict) else float(quantity)
+            print(f"{name}: {units} units")
         bullionGoldORSilver = input("Enter metal [gold | silver | palladium | copper] or exit to return to menu: ").strip().lower()
         if bullionGoldORSilver == "exit":
             break
@@ -621,13 +771,11 @@ def remove_bullion_from_positions():
         if bullionGoldORSilver not in ("gold", "silver", "palladium", "copper", "exit"):
             print("Please enter either gold, silver, palladium or copper...")
             continue
-        try: 
-            current_qty = float(bullion.get(bullionGoldORSilver, 0.0))
-            print(f"{bullionGoldORSilver} : {current_qty} oz(s)")
-                # only outputting the selected bullion type and its quantity 
-        except ValueError:
-            print("Invalid Number Entered")
-            continue
+        
+        position = bullion.get(bullionGoldORSilver, {"units": 0.0, "cost_basis": 0.0})
+        current_units = float(position.get("units", 0.0))
+        print(f"{bullionGoldORSilver} : {current_units} unit(s)")
+
         metalOunce = input("Enter number of ounces to remove or type exit to return to menu: ").strip()
         if metalOunce.lower() == "exit":
             print("Exiting...")
@@ -643,19 +791,27 @@ def remove_bullion_from_positions():
         if metalOunceFloat >= 9_999_999:
             print("Maximum number that can be entered is 9,999,999.")
             continue
-        changedNumber = safe_subtract_and_maybe_delete(bullion, bullionGoldORSilver, metalOunceFloat)
-        if changedNumber:
-            save_data()
-            return
-        else: 
-            print("No changes made.")
-            continue
+        
+        if metalOunceFloat >= current_units:
+            del bullion[bullionGoldORSilver]
+            print(f"Removed {bullionGoldORSilver}.")
+        else:
+            old_cost_basis = position.get("cost_basis", 0.0)
+            cost_basis_to_remove = (old_cost_basis / current_units) * metalOunceFloat if current_units > 0 else 0
+            
+            position["units"] = current_units - metalOunceFloat
+            position["cost_basis"] = max(0.0, old_cost_basis - cost_basis_to_remove)
+            bullion[bullionGoldORSilver] = position
+            print(f"Updated {bullionGoldORSilver}, {position['units']} units remaining.")
+
+        save_data()
+        return
 # CASH SHOW
 def showCash(section="totals", quiet=False) -> float:
         section = (section or "totals").strip().lower()
         show_cash  = section in ("cash", "5", "totals") 
         if not cash: 
-            print("Cash Available is $0") 
+            print("No Cash Position(s)") 
             return
         if not show_cash:
             return 0.0
@@ -801,22 +957,6 @@ def remove_cash_from_position():
                 print("Please enter a valid choice of 1, 2 or exit to return to menu.")
                 continue
         
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     
     # ITEMS SHOW
 def showItems(section="totals", quiet=False) -> float:
@@ -825,7 +965,7 @@ def showItems(section="totals", quiet=False) -> float:
         if not show_items:
             return 0.0
         if not items:
-            print("No items to remove..")
+            print("No item position(s)")
             return
         subtotal = 0.0
         for itemName, amount in items.items():
@@ -1122,68 +1262,237 @@ def chatBotMoneyAssistant():
             print(f"AI Answer: \n{answer}")
 
 def budgeting():
+    global budget
+   
     while True:
+        
         print("\nWelcome to Budgeting")
-        initial_input = input("Type and press enter \n1) Show Budget \n2) Add Budget \n3) Lower Budget \n4) Spending Budget Tracker \n5) Over or Under Budget \nor exit to return to menu: ").strip()
-        if initial_input == "exit":
+        
+        initial_input = input("Type and press enter \n1) Show Budget \n2) Add Budget \n3) Lower Budget \n4) Spending Tracker \n5) Show Spending \n6) Over or Under Budget \n7) to return to menu: ").strip()
+        if initial_input == "7":
             print("Exiting...")
-            return
+            break
         if initial_input == "1":
-            print("Budget: ")
-            # budget shown here
-            continue
+            if not budget:
+                print("No budget recorded")
+                continue
+            if budget: 
+                print(f"Budget : ${budget["total"]:,.2f}")
+                continue
+
         elif initial_input == "2":
-            # add to budget here
-            print("How much would you like to add?")
-            continue
+            budgetInput = input("Type the value and press enter for the amount you would like to add to the budget or exit to return to menu: ")
+            if budgetInput == "exit":
+                print("Exiting...")
+                continue
+            try: 
+                budgetFloat = float(budgetInput)
+            except ValueError:
+                print("Invalid Number")
+                continue
+
+            budget["total"] += budgetFloat
+            print(f"Budget added ${budgetFloat:,.2f}, current budget total is ${budget["total"]:,.2f}")
+            save_data()
+
+
         elif initial_input == "3":
             # lower budget here
             print("How much would you like to subtract?")
-            continue
+            budgetSubtract = input("Type budget amount and press enter to subtract or exit to return to menu: ")
+            if budgetSubtract == "exit":
+                print("Exiting...")
+                continue
+            try: 
+                budgetSubtractFloat = float(budgetSubtract)
+            except ValueError:
+                print("Invalid Number")
+                continue
+            budget["total"] -= budgetSubtractFloat
+            print(f"Budget updated with ${budgetSubtractFloat:,.2f}, budget total now is ${budget["total"]:,.2f}")
+            save_data()
+
         if initial_input == "4":
             while True: 
-                print("\nSpending Budget Tracker")
-                secondInput = input("Type and press enter: \n1) Food \n2) Entertainment \n3) Housing \n4) Utilities \n5) Clothing \nor exit to return to menu: ").strip()
+                print("\nSpending Tracker")
+                secondInput = input("Type and press enter: \n1) Food \n2) Entertainment \n3) Housing \n4) Utilities \n5) Clothing \n6) Clear Spending\n7) to return to menu: ").strip()
                 if secondInput == "1":
                     print("Food Selected")
-                    #show food values saved
-                    #add food
-                    # lower food
-                    continue
+                    while True: 
+                        print(f"food spending: ${budget["food"]:,.2f}")
+                        questionInput = input("1) Add Food Budget\n2) Lower/Remove Food Budget\n3) Exit\n")
+                        if questionInput == "1":
+                            addfoodInput = input("Type the food budget and press enter or exit to return to menu: ")
+                            try:
+                                foodFloat = float(addfoodInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["food"] += foodFloat
+                            save_data()
+                        if questionInput == "2":
+                            print(f"food spending: ${budget["food"]:,.2f}")
+                            subtractFoodInput = input("Type the food budget to lower/remove and press enter or exit to return to menu: ")
+                            if subtractFoodInput == "exit":
+                                print("Exiting...")
+                                return
+                            try: 
+                                subtractFoodFloat = float(subtractFoodInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["food"] -= subtractFoodFloat
+                            save_data()
+                        if questionInput == "3":
+                            print("Exiting...")
+                            break
                 if secondInput == "2":
                     print("Entertainment Selected")
-                    #show entertainment values saved
-                    #add entertainment
-                    # lower entertainment
-                    continue
+                    while True: 
+                        print(f"entertainment spending: ${budget["entertainment"]:,.2f}")
+                        questionInput = input("1) Add Entertainment Budget\n2) Lower/Remove Entertainment Budget\n3) Exit\n")
+                        if questionInput == "1":
+                            addEntertainmentInput = input("Type the Entertainment budget and press enter or exit to return to menu: ")
+                            try:
+                                entertainmentFloat = float(addEntertainmentInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["entertainment"] += entertainmentFloat
+                            save_data()
+                        if questionInput == "2":
+                            print(f"entertainment spending: ${budget["entertainment"]:,.2f}")
+                            subtractEntertainmentInput = input("Type the Entertainment budget to lower/remove and press enter or exit to return to menu: ")
+                            if subtractEntertainmentInput == "exit":
+                                print("Exiting...")
+                                return
+                            try: 
+                                subtractEntertainmentFloat = float(subtractEntertainmentInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["entertainment"] -= subtractEntertainmentFloat 
+                            save_data()
+                        if questionInput == "3":
+                            print("Exiting...")
+                            break
                 if secondInput == "3":
                     print("Housing Selected")
-                    #show housing values saved
-                    #add housing
-                    # lower housing
-                    continue
+                    while True: 
+                        print(f"housing spending: ${budget["housing"]:,.2f}")
+                        questionInput = input("1) Add Housing Budget\n2) Lower/Remove Housing Budget\n3) Exit\n")
+                        if questionInput == "1":
+                            addHousingInput = input("Type the housing budget and press enter or exit to return to menu: ")
+                            try:
+                                housingFloat = float(addHousingInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["housing"] += housingFloat
+                            save_data()
+                        if questionInput == "2":
+                            print(f"housing spending: ${budget["housing"]:,.2f}")
+                            subtractHousingInput = input("Type the housing budget to lower/remove and press enter or exit to return to menu: ")
+                            if subtractHousingInput == "exit":
+                                print("Exiting...")
+                                return
+                            try: 
+                                subtractHousingFloat = float(subtractHousingInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["housing"] -= subtractHousingFloat 
+                            save_data()
+                        if questionInput == "3":
+                            print("Exiting...")
+                            break
                 if secondInput == "4":
                     print("Utilities Selected")
-                    #show utilities values saved
-                    #add utilities
-                    # lower utilities
-                    continue
+                    while True: 
+                        print(f"utilities spending: ${budget["utilities"]:,.2f}")
+                        questionInput = input("1) Add Utilities Budget\n2) Lower/Remove Food Budget\n3) Exit\n")
+                        if questionInput == "1":
+                            addUtilitiesInput = input("Type the utilities budget and press enter or exit to return to menu: ")
+                            try:
+                                utilitiesFloat = float(addUtilitiesInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["utilities"] += utilitiesFloat
+                            save_data()
+                        if questionInput == "2":
+                            print(f"utilities spending: ${budget["utilities"]:,.2f}")
+                            subtractUtilitiesInput = input("Type the utilities budget to lower/remove and press enter or exit to return to menu: ")
+                            if subtractUtilitiesInput == "exit":
+                                print("Exiting...")
+                                return
+                            try: 
+                                subtractUtilitiesFloat = float(subtractUtilitiesInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["utilities"] -= subtractUtilitiesFloat
+                            save_data()
+                        if questionInput == "3":
+                            print("Exiting...")
+                            break
                 if secondInput == "5":
                     print("Clothing Selected")
-                    #show clothing values saved
-                    #add clothing
-                    # lower clothing
-                    continue
-                if secondInput == "exit":
+                    while True: 
+                        print(f"clothing spending: ${budget["clothing"]:,.2f}")
+                        questionInput = input("1) Add Clothing Budget\n2) Lower/Remove Food Budget\n3) Exit\n")
+                        if questionInput == "1":
+                            addClothingInput = input("Type the clothing budget and press enter or exit to return to menu: ")
+                            try:
+                                clothingFloat = float(addClothingInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["clothing"] += clothingFloat
+                            save_data()
+                        if questionInput == "2":
+                            print(f"clothing spending: ${budget["clothing"]:,.2f}")
+                            subtractClothingInput = input("Type the clothing budget to lower/remove and press enter or exit to return to menu: ")
+                            if subtractClothingInput == "exit":
+                                print("Exiting...")
+                                return
+                            try: 
+                                subtractClothingFloat = float(subtractClothingInput)
+                            except ValueError:
+                                print("Invalid Number")
+                                continue
+                            budget["clothing"] -= subtractClothingFloat
+                            save_data()
+                        if questionInput == "3":
+                            print("Exiting...")
+                            break
+                if secondInput == "6":
+                    budget == 0.0
+                    save_data()
+                if secondInput == "7":
                     print("Exiting...")
-                    return
+                    break
         if initial_input == "5":
+            totalSpending = budget["clothing"] + budget["entertainment"] + budget["food"] + budget["housing"] + budget["utilities"]
+            clothing = budget["clothing"]
+            entertainment = budget["entertainment"]
+            food = budget["food"]
+            housing = budget["housing"]
+            utilities = budget["utilities"]
+            print(f"Total Spending: ${totalSpending:,.2f}\nClothing: ${clothing:,.2f}\nEntertainment: ${entertainment:,.2f}\nFood: ${food:,.2f}\nHousing: ${housing:,.2f}\nUtilities: ${utilities:,.2f}")
+
+        if initial_input == "6":
+            totalSpending = budget["clothing"] + budget["entertainment"] + budget["food"] + budget["housing"] + budget["utilities"]
+            budgetTotal = budget["total"]
             print("Over or Under Budget")
-            # show the totals for the sections, 
-            # show subtraction in regards to the budged, 
-            # show over or under budget
-            continue
-        return
+            while True:
+                if totalSpending > budgetTotal:
+                    print("Over Budget")
+                elif totalSpending < budgetTotal:
+                    print("Under Budget")
+                else: 
+                    print("On Budget")
+                break
         
     
 # MAIN MENU
@@ -1192,8 +1501,8 @@ def _main_menu_():
         print("\nWelcome to the Asset, Debt and Budget Tracker")
         print("1) positions")
         print("2) debt")
-        print("3) AI Chat")
-        print("4) Budgeting ((COMING SOON))")
+        print("3) AI Chat (AI SLOP)")
+        print("4) Budgeting")
         print("5) Exit")
         choice = input("Enter a choice of 1, 2, 3, 4 or 5: ")
         if choice == "1":
@@ -1232,11 +1541,19 @@ def _main_menu_():
                     bullionTotal = showBullion(section="bullion", quiet=True) or 0.0
                     print(f"\nBullion Dollar Total: \n ${bullionTotal:,.2f}")
                     print("\nCash Dollar Total: ")
-                    if not cash: 
-                        print("Cash Available is $0")
+                    total = 0.0
+                    if isinstance(cash, dict):
+                        for name, amount in cash.items():
+                            try: 
+                                amount += float(amount)
+                            except (TypeError, ValueError):
+                                continue
+                    if total <= 0.0:
+                        pass
+                        #print("Cash available is $0")
                     else: 
-                        cashTotal = cash["cash"]
-                        print(f" ${cashTotal:,.2f}")
+                        print(f"{total:,.2f}")
+                    print(f" ${total:,.2f}")
                     print("\nItem(s) Dollar Total: ")
                     cashTotal = sum(cash.values())
                     itemTotal = sum(items.values())

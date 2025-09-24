@@ -27,7 +27,7 @@ class AssetTrackerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Asset, Debt and Budget Tracker")
-        self.geometry("900x450")
+        self.geometry("1100x410")
         load_data()
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(pady=10, padx=10, fill="both", expand=True)
@@ -44,13 +44,16 @@ class AssetTrackerApp(tk.Tk):
         self.debt_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.debt_frame, text="Debt")
         self.budget_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.budget_frame, text="Budget")
+        self.notebook.add(self.budget_frame, text="Budget (Coming Soon)")
+        self.total_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.total_frame, text="Totals")
         self.create_stocks_tab()
         self.create_crypto_tab()
         self.create_bullion_tab()
         self.create_cash_tab()
         self.create_item_tab()
         self.create_debt_tab()
+       # self.create_total_tab()
     def create_stocks_tab(self):
         controls_frame = ttk.LabelFrame(self.stocks_frame, text="Manage Stocks")
         controls_frame.pack(fill="x", padx=10, pady=5)
@@ -58,15 +61,28 @@ class AssetTrackerApp(tk.Tk):
         self.stock_ticker_entry = ttk.Entry(controls_frame)
         self.stock_ticker_entry.grid(row=0, column=1, padx=5, pady=5)
         ttk.Label(controls_frame, text="Quantity:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
-        self.stock_quantity_entry = ttk.Entry(controls_frame)
+        self.stock_quantity_entry = ttk.Entry(controls_frame, width=10)
         self.stock_quantity_entry.grid(row=0, column=3, padx=5, pady=5)
         add_button = ttk.Button(controls_frame, text="Add Stock", command=self.add_stock)
-        add_button.grid(row=0, column=4, padx=10, pady=5)
-        self.stocks_tree = ttk.Treeview(self.stocks_frame, columns=("Ticker", "Quantity", "Price", "Value"), show="headings")
-        self.stocks_tree.heading("Ticker", text="Ticker")
-        self.stocks_tree.heading("Quantity", text="Quantity")
-        self.stocks_tree.heading("Price", text="Price")
-        self.stocks_tree.heading("Value", text="Value")
+        add_button.grid(row=0, column=6, padx=10, pady=5)
+        ttk.Label(controls_frame, text="Price (per):").grid(row=0, column=4, padx=5, pady=5, sticky="w")
+        self.stock_price_entry = ttk.Entry(controls_frame)
+        self.stock_price_entry.grid(row=0, column=5, padx=5, pady=5)
+        self.stocks_tree = ttk.Treeview(self.stocks_frame, columns=("Ticker", "Quantity", "Avg. Buy", "Total Purchase(s) Cost", "Price", "Value", "P/L"), show="headings")
+        self.stocks_tree.heading("Ticker", text="Ticker", anchor='w')
+        self.stocks_tree.heading("Quantity", text="Quantity", anchor='e')
+        self.stocks_tree.heading("Avg. Buy", text="Avg. Buy Price", anchor='e')
+        self.stocks_tree.heading("Total Purchase(s) Cost", text="Total Purchase(s) Cost", anchor='e')
+        self.stocks_tree.heading("Price", text="Current Price", anchor='e')
+        self.stocks_tree.heading("Value", text="Current Value", anchor='e')
+        self.stocks_tree.heading("P/L", text="P/L", anchor='e')
+        self.stocks_tree.column("Ticker", width=80, anchor='w')
+        self.stocks_tree.column("Quantity", width=100, anchor='e')
+        self.stocks_tree.column("Avg. Buy", width=100, anchor='e')
+        self.stocks_tree.column("Total Purchase(s) Cost", width=130, anchor='e')
+        self.stocks_tree.column("Price", width=100, anchor='e')
+        self.stocks_tree.column("Value", width=120, anchor='e')
+        self.stocks_tree.column("P/L", width=100, anchor='e')
         self.stocks_tree.pack(fill="both", expand=True, padx=10, pady=5)
         tree_buttons_frame = ttk.Frame(self.stocks_frame)
         tree_buttons_frame.pack(fill="x", padx=10, pady=5)
@@ -80,19 +96,28 @@ class AssetTrackerApp(tk.Tk):
     def refresh_stocks(self):
         for item in self.stocks_tree.get_children():
             self.stocks_tree.delete(item)
-        for ticker, quantity in sorted(Stocks.items()):
+        for ticker, position_data in sorted(Stocks.items()):
+            shares = position_data.get("shares", 0.0)
+            cost_basis = position_data.get("cost_basis", 0.0)
+            avg_buy_price = (cost_basis / shares) if shares > 0 else 0.0
             price = getPrice(ticker)
             if price is not None:
-                value = quantity * price
-                self.stocks_tree.insert("", "end", values=(ticker, f"{quantity:.4f}", f"${price:,.2f}", f"${value:,.2f}"))
+                value = shares * price
+                profitLoss = value - cost_basis
+                profitLoss_str = f"${profitLoss:,.2f}"
+                self.stocks_tree.insert("", "end", values=(ticker, f"{shares:.4f}", f"${avg_buy_price:,.2f}", f"${cost_basis:,.2f}", f"${price:,.2f}", f"${value:,.2f}", profitLoss_str))
             else:
-                self.stocks_tree.insert("", "end", values=(ticker, f"{quantity:.4f}", "N/A", "N/A"))
+                self.stocks_tree.insert("", "end", values=(ticker, f"{shares:.4f}", f"${avg_buy_price:,.2f}", f"${cost_basis:,.2f}", "N/A", "N/A", "N/A"))
 
     def add_stock(self):
         ticker = self.stock_ticker_entry.get().strip().upper()
         quantity_str = self.stock_quantity_entry.get().strip()
+        price_str = self.stock_price_entry.get().strip()
 
-        if not is_valid_ticker(ticker):
+        if not ticker:
+            messagebox.showerror("Error", "Ticker cannot be empty.")
+            return
+        if not is_valid_ticker(ticker) and not messagebox.askyesno("Warning", f"Ticker '{ticker}' looks invalid. Continue anyway?"):
             messagebox.showerror("Error", "Invalid ticker format. Use letters only.")
             return
 
@@ -104,12 +129,25 @@ class AssetTrackerApp(tk.Tk):
             messagebox.showerror("Error", f"Invalid quantity: {e}")
             return
 
-        Stocks[ticker] = Stocks.get(ticker, 0.0) + quantity
+        try:
+            price = float(price_str)
+            if price < 0:
+                raise ValueError("Price cannot be negative.")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid price: {e}")
+            return
+
+        position = Stocks.get(ticker, {"shares": 0.0, "cost_basis": 0.0})
+        position["shares"] += quantity
+        position["cost_basis"] += quantity * price
+        Stocks[ticker] = position
         save_data()
-        messagebox.showinfo("Success", f"Added {quantity} shares of {ticker}.")
+        avg_price = position['cost_basis'] / position['shares']
+        messagebox.showinfo("Success", f"Added {quantity} shares of {ticker} at ${price:,.2f} each.\nNew average price: ${avg_price:,.2f}")
 
         self.stock_ticker_entry.delete(0, "end")
         self.stock_quantity_entry.delete(0, "end")
+        self.stock_price_entry.delete(0, "end")
         self.refresh_stocks()
 
     def remove_stock(self):
@@ -119,9 +157,10 @@ class AssetTrackerApp(tk.Tk):
             return
 
         ticker = self.stocks_tree.item(selected_item[0])['values'][0]
-        current_quantity = Stocks.get(ticker, 0.0)
+        position = Stocks.get(ticker, {"shares": 0.0, "cost_basis": 0.0})
+        current_shares = position.get("shares", 0.0)
 
-        quantity_to_remove_str = simpledialog.askstring("Remove Stock", f"How many shares of {ticker} to remove?\nCurrent holding: {current_quantity}\n(Leave blank to remove all)")
+        quantity_to_remove_str = simpledialog.askstring("Remove Stock", f"How many shares of {ticker} to remove?\nCurrent holding: {current_shares}\n(Leave blank to remove all)")
 
         if quantity_to_remove_str is None:
             return
@@ -136,19 +175,23 @@ class AssetTrackerApp(tk.Tk):
                 quantity_to_remove = float(quantity_to_remove_str)
                 if quantity_to_remove <= 0:
                     raise ValueError("Quantity must be positive.")
-                if quantity_to_remove > current_quantity:
-                    messagebox.showerror("Error", f"Cannot remove {quantity_to_remove} shares. You only have {current_quantity}.")
+                if quantity_to_remove > current_shares:
+                    messagebox.showerror("Error", f"Cannot remove {quantity_to_remove} shares. You only have {current_shares}.")
                     return
             except ValueError as e:
                 messagebox.showerror("Error", f"Invalid quantity: {e}")
                 return
 
-            new_quantity = current_quantity - quantity_to_remove
-            if new_quantity < 1e-9:
+            new_shares = current_shares - quantity_to_remove
+            if new_shares < 1e-9:
                 del Stocks[ticker]
             else:
-                Stocks[ticker] = new_quantity
-
+                old_cost_basis = position.get("cost_basis", 0.0)
+                cost_basis_to_remove = (old_cost_basis / current_shares) * quantity_to_remove if current_shares > 0 else 0
+                
+                position["shares"] = new_shares
+                position["cost_basis"] = max(0.0, old_cost_basis - cost_basis_to_remove)
+                Stocks[ticker] = position
             save_data()
             self.refresh_stocks()
 
@@ -164,14 +207,28 @@ class AssetTrackerApp(tk.Tk):
         self.crypto_quantity_entry = ttk.Entry(controls_frame)
         self.crypto_quantity_entry.grid(row=0, column=3, padx=5, pady=5)
 
-        add_button = ttk.Button(controls_frame, text="Add Crypto", command=self.add_crypto)
-        add_button.grid(row=0, column=4, padx=10, pady=5)
+        ttk.Label(controls_frame, text="Price (per):").grid(row=0, column=4, padx=5, pady=5, sticky="w")
+        self.crypto_price_entry = ttk.Entry(controls_frame)
+        self.crypto_price_entry.grid(row=0, column=5, padx=5, pady=5)
 
-        self.crypto_tree = ttk.Treeview(self.crypto_frame, columns=("Name", "Quantity", "Price", "Value"), show="headings")
-        self.crypto_tree.heading("Name", text="Crypto Name")
-        self.crypto_tree.heading("Quantity", text="Quantity")
-        self.crypto_tree.heading("Price", text="Price")
-        self.crypto_tree.heading("Value", text="Value")
+        add_button = ttk.Button(controls_frame, text="Add Crypto", command=self.add_crypto)
+        add_button.grid(row=0, column=6, padx=10, pady=5)
+
+        self.crypto_tree = ttk.Treeview(self.crypto_frame, columns=("Name", "Quantity", "Avg. Buy", "Total Purchase(s) Cost", "Price", "Value", "P/L"), show="headings")
+        self.crypto_tree.heading("Name", text="Crypto Name", anchor='w')
+        self.crypto_tree.heading("Quantity", text="Quantity", anchor='e')
+        self.crypto_tree.heading("Avg. Buy", text="Avg. Buy Price", anchor='e')
+        self.crypto_tree.heading("Total Purchase(s) Cost", text="Total Purchase(s) Cost", anchor='e')
+        self.crypto_tree.heading("Price", text="Current Price", anchor='e')
+        self.crypto_tree.heading("Value", text="Current Value", anchor='e')
+        self.crypto_tree.heading("P/L", text="P/L", anchor='e')
+        self.crypto_tree.column("Name", width=100, anchor='w')
+        self.crypto_tree.column("Quantity", width=100, anchor='e')
+        self.crypto_tree.column("Avg. Buy", width=100, anchor='e')
+        self.crypto_tree.column("Total Purchase(s) Cost", width=130, anchor='e')
+        self.crypto_tree.column("Price", width=100, anchor='e')
+        self.crypto_tree.column("Value", width=120, anchor='e')
+        self.crypto_tree.column("P/L", width=100, anchor='e')
         self.crypto_tree.pack(fill="both", expand=True, padx=10, pady=5)
 
         tree_buttons_frame = ttk.Frame(self.crypto_frame)
@@ -196,20 +253,28 @@ class AssetTrackerApp(tk.Tk):
         crypto_ids = list(crypto.keys())
         prices = getGUICryptoPrices(crypto_ids, quiet=True)
 
-        for coinGeckoPrice, quantity in sorted(crypto.items()):
-            price = prices.get(coinGeckoPrice)
+        for cid, position_data in sorted(crypto.items()):
+            units = position_data.get("units", 0.0)
+            cost_basis = position_data.get("cost_basis", 0.0)
+            avg_buy_price = (cost_basis / units) if units > 0 else 0.0
+            price = prices.get(cid)
+
             if price is not None:
-                value = quantity * price
-                self.crypto_tree.insert("", "end", values=(coinGeckoPrice, f"{quantity:,.4f}", f"${price:,.2f}", f"${value:,.2f}"))
+                value = units * price
+                profitLoss = value - cost_basis
+                profitLoss_str = f"${profitLoss:,.2f}"
+                self.crypto_tree.insert("", "end", values=(cid, f"{units:,.4f}", f"${avg_buy_price:,.2f}", f"${cost_basis:,.2f}", f"${price:,.2f}", f"${value:,.2f}", profitLoss_str))
             else:
-                self.crypto_tree.insert("", "end", values=(coinGeckoPrice, f"{quantity:.4f}", "N/A", "N/A"))
+                self.crypto_tree.insert("", "end", values=(cid, f"{units:,.4f}", f"${avg_buy_price:,.2f}", f"${cost_basis:,.2f}", "N/A", "N/A", "N/A"))
 
         
 
     def add_crypto(self):
         cryptoName = self.crypto_id_entry.get().strip().lower()
         quantity_str = self.crypto_quantity_entry.get().strip()
+        price_str = self.crypto_price_entry.get().strip()
 
+        # ... (validation for cryptoName, quantity_str, price_str)
         if not is_valid_coingeckoid(cryptoName):
             messagebox.showerror("Error", "Invalid Crypto format. Use coingecko IDs only.")
             return
@@ -222,12 +287,25 @@ class AssetTrackerApp(tk.Tk):
             messagebox.showerror("Error", f"Invalid quantity: {e}")
             return
 
-        crypto[cryptoName] = crypto.get(cryptoName, 0.0) + quantity
+        try:
+            price = float(price_str)
+            if price < 0:
+                raise ValueError("Price cannot be negative.")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid price: {e}")
+            return
+
+        position = crypto.get(cryptoName, {"units": 0.0, "cost_basis": 0.0})
+        position["units"] += quantity
+        position["cost_basis"] += quantity * price
+        crypto[cryptoName] = position
         save_data()
-        messagebox.showinfo("Success", f"Added {quantity} shares of {cryptoName}.")
+        avg_price = position['cost_basis'] / position['units']
+        messagebox.showinfo("Success", f"Added {quantity} of {cryptoName} at ${price:,.2f} each.\nNew average price: ${avg_price:,.2f}")
 
         self.crypto_id_entry.delete(0, "end")
         self.crypto_quantity_entry.delete(0, "end")
+        self.crypto_price_entry.delete(0, "end")
         self.refresh_crypto()
 
     def remove_crypto(self):
@@ -237,15 +315,16 @@ class AssetTrackerApp(tk.Tk):
             return
 
         cryptoID = self.crypto_tree.item(selected_item[0])['values'][0]
-        current_quantity = crypto.get(cryptoID, 0.0)
+        position = crypto.get(cryptoID, {"units": 0.0, "cost_basis": 0.0})
+        current_units = position.get("units", 0.0)
 
-        quantity_to_remove_str = simpledialog.askstring("Remove Cryptocurrency", f"How many shares of {cryptoID} to remove?\nCurrent holding: {current_quantity}\n(Leave blank to remove all)")
+        quantity_to_remove_str = simpledialog.askstring("Remove Cryptocurrency", f"How many units of {cryptoID} to remove?\nCurrent holding: {current_units}\n(Leave blank to remove all)")
 
         if quantity_to_remove_str is None:
             return
 
         if quantity_to_remove_str.strip() == "":
-            if messagebox.askyesno("Confirm", f"Are you sure you want to remove all shares of {cryptoID}?"):
+            if messagebox.askyesno("Confirm", f"Are you sure you want to remove all units of {cryptoID}?"):
                 del crypto[cryptoID]
                 save_data()
                 self.refresh_crypto()
@@ -254,19 +333,23 @@ class AssetTrackerApp(tk.Tk):
                 quantity_to_remove = float(quantity_to_remove_str)
                 if quantity_to_remove <= 0:
                     raise ValueError("Quantity must be positive.")
-                if quantity_to_remove > current_quantity:
-                    messagebox.showerror("Error", f"Cannot remove {quantity_to_remove} units. You only have {current_quantity}.")
+                if quantity_to_remove > current_units:
+                    messagebox.showerror("Error", f"Cannot remove {quantity_to_remove} units. You only have {current_units}.")
                     return
             except ValueError as e:
                 messagebox.showerror("Error", f"Invalid quantity: {e}")
                 return
 
-            new_quantity = current_quantity - quantity_to_remove
-            if new_quantity < 1e-9:
+            new_units = current_units - quantity_to_remove
+            if new_units < 1e-9:
                 del crypto[cryptoID]
             else:
-                crypto[cryptoID] = new_quantity
-
+                old_cost_basis = position.get("cost_basis", 0.0)
+                cost_basis_to_remove = (old_cost_basis / current_units) * quantity_to_remove if current_units > 0 else 0
+                
+                position["units"] = new_units
+                position["cost_basis"] = max(0.0, old_cost_basis - cost_basis_to_remove)
+                crypto[cryptoID] = position
             save_data()
             self.refresh_crypto()
 
@@ -283,14 +366,28 @@ class AssetTrackerApp(tk.Tk):
         self.bullion_quantity_entry = ttk.Entry(controls_frame)
         self.bullion_quantity_entry.grid(row=0, column=3, padx=5, pady=5)
 
-        add_button = ttk.Button(controls_frame, text="Add Bullion", command=self.add_bullion)
-        add_button.grid(row=0, column=4, padx=10, pady=5)
+        ttk.Label(controls_frame, text="Price (per):").grid(row=0, column=4, padx=5, pady=5, sticky="w")
+        self.bullion_price_entry = ttk.Entry(controls_frame)
+        self.bullion_price_entry.grid(row=0, column=5, padx=5, pady=5)
 
-        self.bullion_tree = ttk.Treeview(self.bullion_frame, columns=("Name", "Quantity", "Price", "Value"), show="headings")
-        self.bullion_tree.heading("Name", text="Bullion Name")
-        self.bullion_tree.heading("Quantity", text="Quantity")
-        self.bullion_tree.heading("Price", text="Price")
-        self.bullion_tree.heading("Value", text="Value")
+        add_button = ttk.Button(controls_frame, text="Add Bullion", command=self.add_bullion)
+        add_button.grid(row=0, column=6, padx=10, pady=5)
+
+        self.bullion_tree = ttk.Treeview(self.bullion_frame, columns=("Name", "Quantity", "Avg. Buy", "Total Purchase(s) Cost", "Price", "Value", "P/L"), show="headings")
+        self.bullion_tree.heading("Name", text="Bullion Name", anchor='w')
+        self.bullion_tree.heading("Quantity", text="Quantity", anchor='e')
+        self.bullion_tree.heading("Avg. Buy", text="Avg. Buy Price", anchor='e')
+        self.bullion_tree.heading("Total Purchase(s) Cost", text="Total Purchase(s) Cost", anchor='e')
+        self.bullion_tree.heading("Price", text="Current Price", anchor='e')
+        self.bullion_tree.heading("Value", text="Current Value", anchor='e')
+        self.bullion_tree.heading("P/L", text="P/L", anchor='e')
+        self.bullion_tree.column("Name", width=120, anchor='w')
+        self.bullion_tree.column("Quantity", width=120, anchor='e')
+        self.bullion_tree.column("Avg. Buy", width=100, anchor='e')
+        self.bullion_tree.column("Total Purchase(s) Cost", width=130, anchor='e')
+        self.bullion_tree.column("Price", width=100, anchor='e')
+        self.bullion_tree.column("Value", width=120, anchor='e')
+        self.bullion_tree.column("P/L", width=100, anchor='e')
         self.bullion_tree.pack(fill="both", expand=True, padx=10, pady=5)
 
         tree_buttons_frame = ttk.Frame(self.bullion_frame)
@@ -315,17 +412,29 @@ class AssetTrackerApp(tk.Tk):
        # bullion_name = list(bullion.keys())
         prices = get_GUI_bullion_prices()
 
-        for bullionName, quantity in sorted(bullion.items()):
-            price = prices.get(bullionName)
+        for metal, position_data in sorted(bullion.items()):
+            units = position_data.get("units", 0.0)
+            cost_basis = position_data.get("cost_basis", 0.0)
+            avg_buy_price = (cost_basis / units) if units > 0 else 0.0
+            price = prices.get(metal)
+
             if price is not None:
-                value = quantity * price
-                self.bullion_tree.insert("", "end", values=(bullionName, f"{quantity:,.4f}", f"${price:,.2f}", f"${value:,.2f}"))
+                value = units * price
+                profitLoss = value - cost_basis
+                profitLoss_str = f"${profitLoss:,.2f}"
+                self.bullion_tree.insert("", "end", values=(metal, f"{units:,.4f}", f"${avg_buy_price:,.2f}", f"${cost_basis:,.2f}", f"${price:,.2f}", f"${value:,.2f}", profitLoss_str))
             else:
-                self.bullion_tree.insert("", "end", values=(bullionName, f"{quantity:.4f}", "N/A", "N/A"))
+                self.bullion_tree.insert("", "end", values=(metal, f"{units:,.4f}", f"${avg_buy_price:,.2f}", f"${cost_basis:,.2f}", "N/A", "N/A", "N/A"))
 
     def add_bullion(self):
         bullionName = self.bullion_name_entry.get().strip().lower()
         quantity_str = self.bullion_quantity_entry.get().strip()
+        price_str = self.bullion_price_entry.get().strip()
+
+        if bullionName not in ("gold", "silver", "palladium", "copper"):
+            messagebox.showerror("Error", "Invalid bullion type. Use 'gold', 'silver', 'palladium', or 'copper'.")
+            return
+
         try:
             quantity = float(quantity_str)
             if quantity <= 0:
@@ -333,13 +442,26 @@ class AssetTrackerApp(tk.Tk):
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid quantity: {e}")
             return
+        
+        try:
+            price = float(price_str)
+            if price < 0:
+                raise ValueError("Price cannot be negative.")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid price: {e}")
+            return
 
-        bullion[bullionName] = bullion.get(bullionName, 0.0) + quantity
+        position = bullion.get(bullionName, {"units": 0.0, "cost_basis": 0.0})
+        position["units"] += quantity
+        position["cost_basis"] += quantity * price
+        bullion[bullionName] = position
         save_data()
-        messagebox.showinfo("Success", f"Added {quantity} shares of {bullionName}.")
+        avg_price = position['cost_basis'] / position['units']
+        messagebox.showinfo("Success", f"Added {quantity} of {bullionName} at ${price:,.2f} each.\nNew average price: ${avg_price:,.2f}")
 
         self.bullion_name_entry.delete(0, "end")
         self.bullion_quantity_entry.delete(0, "end")
+        self.bullion_price_entry.delete(0, "end")
         self.refresh_bullion()
 
     def remove_bullion(self):
@@ -349,7 +471,8 @@ class AssetTrackerApp(tk.Tk):
             return
 
         bullionType = self.bullion_tree.item(selected_item[0])['values'][0]
-        current_quantity = bullion.get(bullionType, 0.0)
+        position = bullion.get(bullionType, {"units": 0.0, "cost_basis": 0.0})
+        current_quantity = position.get("units", 0.0)
 
         quantity_to_remove_str = simpledialog.askstring("Remove Bullion", f"How many oz of {bullionType} to remove?\nCurrent holding: {current_quantity}\n(Leave blank to remove all)")
 
@@ -357,7 +480,7 @@ class AssetTrackerApp(tk.Tk):
             return
 
         if quantity_to_remove_str.strip() == "":
-            if messagebox.askyesno("Confirm", f"Are you sure you want to remove all shares of {bullionType}?"):
+            if messagebox.askyesno("Confirm", f"Are you sure you want to remove all units of {bullionType}?"):
                 del bullion[bullionType]
                 save_data()
                 self.refresh_bullion()
@@ -377,8 +500,12 @@ class AssetTrackerApp(tk.Tk):
             if new_quantity < 1e-9:
                 del bullion[bullionType]
             else:
-                bullion[bullionType] = new_quantity
-
+                old_cost_basis = position.get("cost_basis", 0.0)
+                cost_basis_to_remove = (old_cost_basis / current_quantity) * quantity_to_remove if current_quantity > 0 else 0
+                
+                position["units"] = new_quantity
+                position["cost_basis"] = max(0.0, old_cost_basis - cost_basis_to_remove)
+                bullion[bullionType] = position
             save_data()
             self.refresh_bullion()
 
@@ -401,6 +528,8 @@ class AssetTrackerApp(tk.Tk):
         self.cash_tree = ttk.Treeview(self.cash_frame, columns=("Account", "Value"), show="headings")
         self.cash_tree.heading("Account", text="Account")
         self.cash_tree.heading("Value", text="Value")
+        self.cash_tree.column("Account", width=200, anchor='w')
+        self.cash_tree.column("Value", width=150, anchor='e')
         self.cash_tree.pack(fill="both", expand=True, padx=7, pady=5)
 
         tree_buttons_frame = ttk.Frame(self.cash_frame)
@@ -504,6 +633,8 @@ class AssetTrackerApp(tk.Tk):
         self.item_tree = ttk.Treeview(self.items_frame, columns=("Name", "Value"), show="headings")
         self.item_tree.heading("Name", text="Name")
         self.item_tree.heading("Value", text="Value")
+        self.item_tree.column("Name", width=200, anchor='w')
+        self.item_tree.column("Value", width=150, anchor='e')
         self.item_tree.pack(fill="both", expand=True, padx=10, pady=5)
         tree_buttons_frame = ttk.Frame(self.items_frame)
         tree_buttons_frame.pack(fill="x", padx=10, pady=5)
@@ -599,6 +730,8 @@ class AssetTrackerApp(tk.Tk):
         self.debt_tree = ttk.Treeview(self.debt_frame, columns=("Name", "Balance"), show="headings")
         self.debt_tree.heading("Name", text="Name")
         self.debt_tree.heading("Balance", text="Balance")
+        self.debt_tree.column("Name", width=200, anchor='w')
+        self.debt_tree.column("Balance", width=150, anchor='e')
         self.debt_tree.pack(fill="both", expand=True, padx=10, pady=5)
         tree_buttons_frame = ttk.Frame(self.debt_frame)
         tree_buttons_frame.pack(fill="x", padx=10, pady=5)
@@ -706,15 +839,15 @@ class AssetTrackerApp(tk.Tk):
 
         # Prepare data with prices for the AI
         priced_stocks = {}
-        for ticker, quantity in Stocks.items():
+        for ticker, position in Stocks.items():
             price = getPrice(ticker)
-            priced_stocks[ticker] = {"quantity": quantity, "last_price": price or 0.0}
+            priced_stocks[ticker] = {"quantity": position.get('shares', 0.0), "last_price": price or 0.0}
 
         priced_crypto = {}
         if crypto:
             prices = getGUICryptoPrices(list(crypto.keys()), quiet=True)
-            for cid, quantity in crypto.items():
-                priced_crypto[cid] = {"quantity": quantity, "last_price": prices.get(cid, 0.0)}
+            for cid, position in crypto.items():
+                priced_crypto[cid] = {"quantity": position.get('units', 0.0), "last_price": prices.get(cid, 0.0)}
 
         priced_bullion = {}
         if bullion:
@@ -748,6 +881,9 @@ class AssetTrackerApp(tk.Tk):
         self.ai_response_text.config(state="normal")
         self.ai_response_text.delete("1.0", "end")
         self.ai_response_text.config(state="disabled")
+
+    def create_total_tab():
+        pass
 
 if __name__ == "__main__":
     app = AssetTrackerApp()

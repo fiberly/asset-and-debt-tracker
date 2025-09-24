@@ -1,5 +1,7 @@
 TOP PRIORITY: 
-#TODO profit loss area?
+# security checks for budgeting
+# gui for budgeting area
+# TODO: refactor totals area with information about profit and loss
 # TODO: Helper info for coingecko ids
 # TODO: Caching/saving the last loaded asset price
 # TODO: removing items with a number instead of writing out stocks has, crypto needs, bullion, cash, item, debt needs
