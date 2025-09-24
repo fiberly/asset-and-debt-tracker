@@ -16,6 +16,7 @@ from financial import (
     bullion,
     cash,
     items,
+    budget,
     debt,
     yfinance,
     CoinGeckoAPI,
@@ -43,8 +44,8 @@ class AssetTrackerApp(tk.Tk):
         self.notebook.add(self.items_frame, text="Item(s)")
         self.debt_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.debt_frame, text="Debt")
-        self.budget_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.budget_frame, text="Budget (Coming Soon)")
+        self.budget_frame = ttk.Frame(self.notebook, padding=(10, 10))
+        self.notebook.add(self.budget_frame, text="Budget")
         self.total_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.total_frame, text="Totals")
         self.create_stocks_tab()
@@ -53,7 +54,8 @@ class AssetTrackerApp(tk.Tk):
         self.create_cash_tab()
         self.create_item_tab()
         self.create_debt_tab()
-       # self.create_total_tab()
+        self.create_budget_tab()
+        self.create_total_tab()
     def create_stocks_tab(self):
         controls_frame = ttk.LabelFrame(self.stocks_frame, text="Manage Stocks")
         controls_frame.pack(fill="x", padx=10, pady=5)
@@ -882,8 +884,248 @@ class AssetTrackerApp(tk.Tk):
         self.ai_response_text.delete("1.0", "end")
         self.ai_response_text.config(state="disabled")
 
-    def create_total_tab():
-        pass
+    def create_budget_tab(self):
+        # --- Total Budget Frame ---
+        total_frame = ttk.LabelFrame(self.budget_frame, text="Total Budget")
+        total_frame.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+
+        self.total_budget_label = ttk.Label(total_frame, text=f"Current: ${budget.get('total', 0.0):,.2f}", font=("", 10, "bold"))
+        self.total_budget_label.grid(row=0, column=0, padx=5, pady=5)
+
+        self.budget_entry = ttk.Entry(total_frame, width=12)
+        self.budget_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        set_button = ttk.Button(total_frame, text="Set/Add Budget", command=self.set_budget)
+        set_button.grid(row=0, column=2, padx=5, pady=5)
+
+        remove_button = ttk.Button(total_frame, text="Remove Budget", command=self.remove_budget)
+        remove_button.grid(row=0, column=3, padx=5, pady=5)
+
+        # --- Spending Tracker Frame ---
+        spending_frame = ttk.LabelFrame(self.budget_frame, text="Add Spending")
+        spending_frame.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+
+        ttk.Label(spending_frame, text="Category:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.budget_category_combo = ttk.Combobox(spending_frame, values=["food", "entertainment", "housing", "utilities", "clothing"], state="readonly")
+        self.budget_category_combo.grid(row=0, column=1, padx=5, pady=5)
+        self.budget_category_combo.set("food")
+
+        ttk.Label(spending_frame, text="Amount:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
+        self.spending_amount_entry = ttk.Entry(spending_frame, width=12)
+        self.spending_amount_entry.grid(row=0, column=3, padx=5, pady=5)
+
+        add_spending_button = ttk.Button(spending_frame, text="Add Expense", command=self.add_expense)
+        add_spending_button.grid(row=0, column=4, padx=5, pady=(5, 2), sticky="ew")
+
+        remove_spending_button = ttk.Button(spending_frame, text="Remove Expense", command=self.remove_expense)
+        remove_spending_button.grid(row=1, column=4, padx=5, pady=(2, 5), sticky="ew")
+
+        # --- Budget Summary Frame ---
+        summary_frame = ttk.LabelFrame(self.budget_frame, text="Budget Summary")
+        summary_frame.grid(row=0, column=1, rowspan=2, padx=5, pady=5, sticky="nsew")
+
+        self.budget_summary_tree = ttk.Treeview(summary_frame, columns=("Category", "Spent"), show="headings")
+        self.budget_summary_tree.heading("Category", text="Category")
+        self.budget_summary_tree.heading("Spent", text="Amount Spent")
+        self.budget_summary_tree.column("Category", width=120, anchor='w')
+        self.budget_summary_tree.column("Spent", width=120, anchor='e')
+        self.budget_summary_tree.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.budget_status_label = ttk.Label(summary_frame, text="", font=("", 10, "bold"))
+        self.budget_status_label.pack(pady=5)
+
+        self.budget_frame.grid_columnconfigure(1, weight=1)
+        self.refresh_budget()
+
+    def refresh_budget(self):
+        # Update total budget label
+        self.total_budget_label.config(text=f"Current: ${budget.get('total', 0.0):,.2f}")
+
+        # Clear and repopulate the summary tree
+        for item in self.budget_summary_tree.get_children():
+            self.budget_summary_tree.delete(item)
+
+        total_spent = 0.0
+        for category, spent in budget.items():
+            if category != "total":
+                self.budget_summary_tree.insert("", "end", values=(category.capitalize(), f"${spent:,.2f}"))
+                total_spent += spent
+
+        # Add total spending row
+        self.budget_summary_tree.insert("", "end", values=("Total Spent", f"${total_spent:,.2f}"), tags=('total_row',))
+        self.budget_summary_tree.tag_configure('total_row', font=('TkDefaultFont', 9, 'bold'))
+
+        # Update over/under status
+        total_budget = budget.get("total", 0.0)
+        remaining = total_budget - total_spent
+        if remaining >= 0:
+            status_text = f"Under Budget by ${remaining:,.2f}"
+            self.budget_status_label.config(text=status_text, foreground="green")
+        else:
+            status_text = f"Over Budget by ${abs(remaining):,.2f}"
+            self.budget_status_label.config(text=status_text, foreground="red")
+
+    def set_budget(self):
+        amount_str = self.budget_entry.get().strip()
+        if not amount_str:
+            messagebox.showerror("Error", "Please enter an amount to set/add to the budget.")
+            return
+        try:
+            amount = float(amount_str)
+            if amount < 0:
+                raise ValueError("Budget amount cannot be negative.")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid amount: {e}")
+            return
+
+        budget["total"] += amount
+        save_data()
+        self.budget_entry.delete(0, "end")
+        self.refresh_budget()
+
+    def remove_budget(self):
+        amount_str = self.budget_entry.get().strip()
+        if not amount_str:
+            messagebox.showerror("Error", "Please enter an amount to remove from the budget.")
+            return
+        try:
+            amount = float(amount_str)
+            if amount <= 0:
+                raise ValueError("Removal amount must be positive.")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid amount: {e}")
+            return
+
+        current_budget = budget.get("total", 0.0)
+        if amount > current_budget:
+            if messagebox.askyesno("Confirm", f"This will reduce the budget by ${amount:,.2f}, which is more than the current total of ${current_budget:,.2f}. Set budget to $0?"):
+                budget["total"] = 0.0
+            else:
+                return # User cancelled
+        else:
+            budget["total"] -= amount
+        save_data()
+        self.budget_entry.delete(0, "end")
+        self.refresh_budget()
+
+    def add_expense(self):
+        category = self.budget_category_combo.get()
+        amount_str = self.spending_amount_entry.get().strip()
+        try:
+            amount = float(amount_str)
+            if amount <= 0: raise ValueError("Amount must be positive.")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid amount: {e}")
+            return
+        budget[category] = budget.get(category, 0.0) + amount
+        save_data()
+        self.spending_amount_entry.delete(0, "end")
+        self.refresh_budget()
+
+    def remove_expense(self):
+        category = self.budget_category_combo.get()
+        amount_str = self.spending_amount_entry.get().strip()
+        try:
+            amount_to_remove = float(amount_str)
+            if amount_to_remove <= 0:
+                raise ValueError("Amount must be positive.")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid amount: {e}")
+            return
+
+        current_spent = budget.get(category, 0.0)
+        if amount_to_remove > current_spent:
+            if messagebox.askyesno("Confirm", f"This will reduce spending for '{category.capitalize()}' by ${amount_to_remove:,.2f}, which is more than the current spent amount of ${current_spent:,.2f}. Set spending for this category to $0?"):
+                budget[category] = 0.0
+            else:
+                return # User cancelled
+        else:
+            budget[category] -= amount_to_remove
+        
+        # Ensure we don't end up with a tiny negative number due to float precision
+        if budget[category] < 1e-9:
+            budget[category] = 0.0
+
+        save_data()
+        self.spending_amount_entry.delete(0, "end")
+        self.refresh_budget()
+
+    def create_total_tab(self):
+        # --- Main Frame ---
+        main_frame = ttk.Frame(self.total_frame, padding=(10, 10))
+        main_frame.pack(fill="both", expand=True)
+
+        # --- Treeview for Summary ---
+        self.totals_tree = ttk.Treeview(main_frame, columns=("Category", "Value", "Profit/Loss"), show="headings")
+        self.totals_tree.heading("Category", text="Category")
+        self.totals_tree.heading("Value", text="Current Value")
+        self.totals_tree.heading("Profit/Loss", text="Profit/Loss")
+
+        self.totals_tree.column("Category", width=200, anchor='w')
+        self.totals_tree.column("Value", width=150, anchor='e')
+        self.totals_tree.column("Profit/Loss", width=150, anchor='e')
+
+        self.totals_tree.pack(fill="both", expand=True)
+
+        # --- Refresh Button ---
+        refresh_button = ttk.Button(main_frame, text="Refresh Totals", command=self.refresh_totals)
+        refresh_button.pack(pady=10)
+
+        # --- Style for summary rows ---
+        self.totals_tree.tag_configure('asset_total', font=('TkDefaultFont', 9, 'bold'))
+        self.totals_tree.tag_configure('net_worth', font=('TkDefaultFont', 10, 'bold'))
+
+        self.refresh_totals()
+
+    def refresh_totals(self):
+        for item in self.totals_tree.get_children():
+            self.totals_tree.delete(item)
+
+        # --- Calculate Asset Values and P/L ---
+        stock_total, stock_pl = 0.0, 0.0
+        for ticker, pos in Stocks.items():
+            price = getPrice(ticker) or 0.0
+            value = pos.get('shares', 0.0) * price
+            stock_total += value
+            stock_pl += value - pos.get('cost_basis', 0.0)
+
+        crypto_total, crypto_pl = 0.0, 0.0
+        if crypto:
+            prices = getGUICryptoPrices(list(crypto.keys()), quiet=True)
+            for cid, pos in crypto.items():
+                price = prices.get(cid, 0.0)
+                value = pos.get('units', 0.0) * price
+                crypto_total += value
+                crypto_pl += value - pos.get('cost_basis', 0.0)
+
+        bullion_total, bullion_pl = 0.0, 0.0
+        if bullion:
+            prices = get_GUI_bullion_prices()
+            for metal, pos in bullion.items():
+                price = prices.get(metal, 0.0)
+                value = pos.get('units', 0.0) * price
+                bullion_total += value
+                bullion_pl += value - pos.get('cost_basis', 0.0)
+
+        cash_total = sum(float(v) for v in cash.values())
+        item_total = sum(float(v) for v in items.values())
+        debt_total = sum(float(v) for v in debt.values())
+
+        # --- Populate Treeview ---
+        self.totals_tree.insert("", "end", values=("Stocks", f"${stock_total:,.2f}", f"${stock_pl:,.2f}"))
+        self.totals_tree.insert("", "end", values=("Cryptocurrency", f"${crypto_total:,.2f}", f"${crypto_pl:,.2f}"))
+        self.totals_tree.insert("", "end", values=("Bullion", f"${bullion_total:,.2f}", f"${bullion_pl:,.2f}"))
+        self.totals_tree.insert("", "end", values=("Cash", f"${cash_total:,.2f}", "---"))
+        self.totals_tree.insert("", "end", values=("Items", f"${item_total:,.2f}", "---"))
+        self.totals_tree.insert("", "end", values=("", "", "")) # Separator
+
+        total_assets = stock_total + crypto_total + bullion_total + cash_total + item_total
+        self.totals_tree.insert("", "end", values=("Total Assets", f"${total_assets:,.2f}", ""), tags=('asset_total',))
+        self.totals_tree.insert("", "end", values=("Total Debt", f"(${debt_total:,.2f})", ""), tags=('asset_total',))
+        self.totals_tree.insert("", "end", values=("", "", "")) # Separator
+
+        net_worth = total_assets - debt_total
+        self.totals_tree.insert("", "end", values=("Net Worth", f"${net_worth:,.2f}", ""), tags=('net_worth',))
 
 if __name__ == "__main__":
     app = AssetTrackerApp()

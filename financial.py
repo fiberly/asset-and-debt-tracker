@@ -210,12 +210,13 @@ def getPrice(ticker: str) -> float | None:
     return None
 # STOCK
 # takes the ticker symbol and and quantity and returns prices
-def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> float:
+def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> tuple[float, float]:
     section = (section or "totals").strip().lower()
     show_stocks  = section in ("stocks", "stock", "1", "totals")    
     tickerANDAmounts = s.split(",")
     extraRemoved = [strippedParts.strip() for strippedParts in tickerANDAmounts]
     outputDictionary = {}
+    total_pl = 0.0
     for splitParts in extraRemoved: 
         ticker, position_data = splitParts.split(":", 1)
         outputDictionary[ticker] = float(position_data)
@@ -224,7 +225,7 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> float:
         if show_stocks: 
             if not Stocks:
                 if not quiet: print("No stock(s) in positions.")
-                return 0.0
+                return 0.0, 0.0
             for ticker, position_data in Stocks.items():
                 shares = position_data["shares"] if isinstance(position_data, dict) else float(position_data)
                 cost_basis = position_data.get("cost_basis", 0.0) if isinstance(position_data, dict) else 0.0
@@ -236,6 +237,7 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> float:
                     continue
                 TotalValue = tickerPrice * shares
                 subtotal += TotalValue
+                total_pl += TotalValue - cost_basis
                 if show_stocks: 
                     if section in ("stocks", "stock", "1", "totals"):
                         if not quiet:
@@ -246,7 +248,7 @@ def parse_positions(s= "AMZN: 1.0", section="totals", quiet=True) -> float:
     except Exception as e:
         if not quiet: 
             print(f"\nError retrieving data for ticker:", e)
-    return subtotal
+    return subtotal, total_pl
 def is_valid_ticker(ticker: str) -> bool:
     ticker = (ticker or "").strip()
     if not ticker or len(ticker) > 10:
@@ -422,24 +424,24 @@ def getGUICryptoPrices(ids, quiet=False):
     return prices 
 
 # CRYPTO PRICE
-def showCrypto(section="totals", quiet=False) -> float:
+def showCrypto(section="totals", quiet=False) -> tuple[float, float]:
         if not crypto:
             if not quiet: 
                 print("No crypto position(s)")
-            return
+            return 0.0, 0.0
         section = (section or "totals").strip().lower()
         show_crypto = section in ("crypto", "cryptos", "2", "totals")  
         
         if not show_crypto:
-            return 0.0
+            return 0.0, 0.0
         if not show_crypto:
             if not quiet: 
                 print("No crypto was/is saved.")
-            return 0.0
+            return 0.0, 0.0
         if CoinGeckoAPI is None:
             if not quiet: 
                 print("CoinGecko is not available.")
-            return 0.0
+            return 0.0, 0.0
         crypto_id = list(crypto.keys())
         prices = {}
         try: 
@@ -469,8 +471,9 @@ def showCrypto(section="totals", quiet=False) -> float:
         except Exception:
                 if not quiet: 
                     print("Crypto prices are unavailable right now.")
-                return 0.0
+                return 0.0, 0.0
         subtotal = 0.0
+        total_pl = 0.0
         for cid, position_data in crypto.items():
             units = position_data.get("units", 0.0) if isinstance(position_data, dict) else float(position_data)
             cost_basis = position_data.get("cost_basis", 0.0) if isinstance(position_data, dict) else 0.0
@@ -487,9 +490,10 @@ def showCrypto(section="totals", quiet=False) -> float:
             profitLoss_string = f"P/L: ${profitLoss:,.2f}"
             CryptoWorth = units * price
             subtotal += CryptoWorth
+            total_pl += profitLoss
             if not quiet: 
                 print(f"\n{cid}: {units} units @ avg buy price of ${avg_buy_price:,.2f}. Total Purchase(s) Cost: ${cost_basis:,.2f}\nCurrent Crypto Price: ${price:,.2f}, Current Value: ${current_value:,.2f} | ({profitLoss_string})")
-        return subtotal
+        return subtotal, total_pl
 def is_valid_coingeckoid(cid: str) -> bool:
     cid = (cid or "").strip()
     if not cid or len(cid) > 50:
@@ -646,11 +650,11 @@ def get_GUI_bullion_prices() -> dict[str, float | None]:
         except Exception:
             prices[metal] = None
     return prices
-def showBullion(section="totals", quiet=False) -> float:
+def showBullion(section="totals", quiet=False) -> tuple[float, float]:
     if not bullion:
             if not quiet: 
                 print("No bullion position(s)")
-                return
+                return 0.0, 0.0
     url = "https://api.gold-api.com"
     if requests is not None: 
         try: 
@@ -665,14 +669,15 @@ def showBullion(section="totals", quiet=False) -> float:
     section = (section or "totals").strip().lower()
     show_bullion = section in ("bullion", "3", "totals")           
     if not show_bullion: 
-        return 0.0
+        return 0.0, 0.0
     subtotal = 0.0
+    total_pl = 0.0
     
     prices = get_GUI_bullion_prices()
     if not prices:
         if not quiet: 
             print("\nBullion prices are unavailable right now...\n")
-        return 0.0
+        return 0.0, 0.0
 
     for metal, position_data in bullion.items():
         units = position_data.get("units", 0.0)
@@ -688,9 +693,10 @@ def showBullion(section="totals", quiet=False) -> float:
         profit_loss = current_value - cost_basis
         pnl_string = f"P/L: ${profit_loss:,.2f}"
         subtotal += current_value
+        total_pl += profit_loss
         if not quiet:
             print(f"\n{metal.capitalize()}: {units} units @ avg buy price of ${avg_buy_price:,.2f}. Total Purchase(s) Cost: ${cost_basis:,.2f}\nCurrent Price: ${price:,.2f}, Current Value: ${current_value:,.2f} | ({pnl_string})")
-    return subtotal
+    return subtotal, total_pl
 def add_bullion_to_positions():
     
     while True: 
@@ -1534,12 +1540,12 @@ def _main_menu_():
                     showBullion(section="bullion")
                 elif section in ("6", "totals"):
                     print("\n Totals:  ")
-                    stockTotal = parse_positions(section="stocks", quiet=True) or 0.0
-                    print(f"\nStock Dollar Total: \n ${stockTotal:,.2f}")
-                    cryptoTotal = showCrypto(section="crypto", quiet=True) or 0.0
-                    print(f"\nCrypto Dollar Total: \n ${cryptoTotal:,.2f}")
-                    bullionTotal = showBullion(section="bullion", quiet=True) or 0.0
-                    print(f"\nBullion Dollar Total: \n ${bullionTotal:,.2f}")
+                    stockTotal, stock_pl = parse_positions(section="stocks", quiet=True)
+                    print(f"\nStock Dollar Total: \n ${stockTotal:,.2f} (P/L: ${stock_pl:,.2f})")
+                    cryptoTotal, crypto_pl = showCrypto(section="crypto", quiet=True)
+                    print(f"\nCrypto Dollar Total: \n ${cryptoTotal:,.2f} (P/L: ${crypto_pl:,.2f})")
+                    bullionTotal, bullion_pl = showBullion(section="bullion", quiet=True)
+                    print(f"\nBullion Dollar Total: \n ${bullionTotal:,.2f} (P/L: ${bullion_pl:,.2f})")
                     print("\nCash Dollar Total: ")
                     total = 0.0
                     if isinstance(cash, dict):
