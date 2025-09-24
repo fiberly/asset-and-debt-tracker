@@ -8,6 +8,8 @@ This is a python program that allows the tracking of assets. Such as stocks, cry
 Stock, Cryptocurrency, Bullion, Cash and Items 
 # DEBT TRACKER: 
 Track debt, ability to add and remove
+# Budget Tracker: 
+set a budget, track that budget with categories
 # ADDING:
 Allows the adding of the above topics to the program dictionary
 # REMOVING:
